@@ -1,0 +1,39 @@
+{
+  "name": "gnome-side-notes-extension",
+  "version": "0.0.0",
+  "description": "Show multiple clock side-notes in the panel",
+  "main": "extension.js",
+  "repository": "git@github.com:Masquerade-Circus/gnome-side-notes-extension.git",
+  "license": "Apache-2.0",
+  "author": "Masquerade <christian@masquerade-circus.net>",
+  "private": false,
+  "type": "module",
+  "keywords": [
+    "gnome",
+    "gnome-shell",
+    "extension",
+    "clock",
+    "side-notes",
+    "multiple"
+  ],
+  "scripts": {
+    "dev:source": "cross-env NODE_ENV=development nodemon -w ./lib build.js",
+    "build:source": "cross-env NODE_ENV=production node build.js",
+    "watch-log": "journalctl -f -o cat /usr/bin/gnome-shell",
+    "enable": "gnome-extensions enable side-notes@masquerade-circus.net",
+    "disable": "gnome-extensions disable side-notes@masquerade-circus.net",
+    "restart": "gnome-shell --replace & gnome_pid=$! && sleep 1 && kill -9 $gnome_pid",
+    "compile": "glib-compile-schemas schemas/",
+    "zip": "zip -r side-notes@masquerade-circus.net.zip schemas/* extension.js metadata.json",
+    "build": "yarn build:source && yarn compile && yarn zip"
+  },
+  "devDependencies": {
+    "babel-eslint": "^10.1.0",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.15.7",
+    "eslint": "^7.32.0",
+    "eslint-plugin-gjs": "bartlibert/eslint-plugin-gjs",
+    "eslint-plugin-sonarjs": "^0.10.0",
+    "nodemon": "^2.0.20"
+  }
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.side-notes" path="/org/gnome/shell/extensions/side-notes/">
+    <key name="store" type="s">
+      <default>"{}"</default>
+    </key>
+  </schema>
+</schemalist>
