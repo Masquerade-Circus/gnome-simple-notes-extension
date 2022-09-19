@@ -4,6 +4,12 @@
 var { GLib, Gio } = imports.gi;
 var ExtensionUtils = imports.misc.extensionUtils;
 var Me = ExtensionUtils.getCurrentExtension();
+var LOG_LEVELS = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3
+};
 var Store = class {
   constructor() {
     this.store = {
@@ -11,6 +17,7 @@ var Store = class {
       config: {}
     };
     this.id = null;
+    this.logLevel = LOG_LEVELS.ERROR;
   }
   log(...args) {
     let str = args.map((arg) => {
@@ -21,6 +28,26 @@ ${JSON.stringify(arg, null, 2)}`;
       return arg;
     }).join(", ");
     log(`${Me.metadata.name}: ${str}`);
+  }
+  logDebug(...args) {
+    if (this.logLevel <= LOG_LEVELS.DEBUG) {
+      this.logDebug(...args);
+    }
+  }
+  logInfo(...args) {
+    if (this.logLevel <= LOG_LEVELS.INFO) {
+      this.logDebug(...args);
+    }
+  }
+  logWarn(...args) {
+    if (this.logLevel <= LOG_LEVELS.WARN) {
+      this.logDebug(...args);
+    }
+  }
+  logError(...args) {
+    if (this.logLevel <= LOG_LEVELS.ERROR) {
+      this.logDebug(...args);
+    }
   }
   enable(id2) {
     this.id = id2;
@@ -43,36 +70,109 @@ ${JSON.stringify(arg, null, 2)}`;
       return null;
     }
     let unpacked = settings.deep_unpack();
-    this.log("loadSettings", "store", unpacked);
+    this.logDebug("loadSettings", "store", unpacked);
     this.store = JSON.parse(unpacked);
   }
   saveSettings() {
-    this.log("saveSettings", this.store);
+    this.logDebug("saveSettings", this.store);
     const settings = new GLib.Variant("s", JSON.stringify(this.store));
     this.settings.set_value("store", settings);
   }
   setState(key, value) {
-    this.log("setState", key, value);
+    this.logDebug("setState", key, value);
     this.store.state = this.store.state || {};
     this.store.state[key] = value;
     this.saveSettings();
   }
   getState(key) {
-    this.log("getState", key, this.store.state && this.store.state[key]);
+    this.logDebug("getState", key, this.store.state && this.store.state[key]);
     return this.store.state ? this.store.state[key] : null;
   }
   setConfig(key, value) {
-    this.log("setConfig", key, value);
+    this.logDebug("setConfig", key, value);
     this.store.config = this.store.config || {};
     this.store.config[key] = value;
     this.saveSettings();
   }
   getConfig(key) {
-    this.log("getConfig", key, this.store.config && this.store.config[key]);
+    this.logDebug(
+      "getConfig",
+      key,
+      this.store.config && this.store.config[key]
+    );
     return this.store.config ? this.store.config[key] : null;
   }
 };
 var Store_default = new Store();
+
+// lib/logic/constants.js
+var NOTE_TYPES = {
+  TEXT: "text",
+  TASKS: "tasks",
+  IMAGE: "image"
+};
+var NOTE_MODAL = {
+  maxWidth: 640,
+  maxHeight: Math.abs(640 / 16 * 9)
+};
+var COLOR_TYPES = {
+  PRIMARY: "primary",
+  ACCENT: "accent",
+  SUCCESS: "success",
+  INFO: "info",
+  WARNING: "warning",
+  DANGER: "danger",
+  DEFAULT: "default"
+};
+var COLORS = {
+  primary: "#3244ad",
+  accent: "#953ca5",
+  success: "#2ab7a9",
+  info: "#00c3e0",
+  warning: "#bf7921",
+  danger: "#bb2626",
+  default: "#646c8a"
+};
+var DEFAULT_NOTES = [
+  {
+    title: "Note 1",
+    type: "text",
+    content: "This is a text note",
+    color: "primary"
+  },
+  {
+    title: "Note 2",
+    type: "tasks",
+    content: [
+      {
+        title: "Task 1",
+        status: "todo",
+        isDone: false
+      },
+      {
+        title: "Task 2",
+        status: "doing",
+        isDone: false
+      },
+      {
+        title: "Task 3",
+        status: "done",
+        isDone: true
+      }
+    ],
+    color: "default"
+  },
+  {
+    title: "Note 3",
+    type: "image",
+    content: "https://picsum.photos/200/300",
+    color: "success"
+  }
+];
+var DEFAULT_NOTES_CONFIG = {
+  maxWidth: 240,
+  items: 5
+};
 
 // lib/core/BaseExtension.js
 var { St, Clutter } = imports.gi;
@@ -123,57 +223,224 @@ var Extension = class {
 };
 var BaseExtension_default = Extension;
 
-// lib/logic/Note.js
-var { St: St2, Clutter: Clutter2 } = imports.gi;
-var { util: Util } = imports.misc;
-var NOTE_TYPES = {
-  TEXT: "text",
-  TASKS: "tasks",
-  IMAGE: "image"
-};
-var NotePopup = class {
-  constructor({ title, type, content, color, onUpdate }) {
-    this.box = new St2.BoxLayout({
-      vertical: true,
-      clip_to_allocation: true,
-      reactive: true,
-      style: `background-color: ${color};border-radius: 5px;`
-    });
-    this.title = title;
-    this.type = type;
-    this.content = content;
-    this.color = color;
-    this.onUpdate = onUpdate;
-    this.constructType();
-  }
-};
-var Note = class {
-  constructor({ id: id2, color, width, height, onUpdate }) {
+// lib/logic/NoteModal.js
+var { St: St2, Clutter: Clutter2, Pango } = imports.gi;
+var { modalDialog: ModalDialog } = imports.ui;
+var NoteModal = class {
+  constructor({ id: id2, onUpdate }) {
     const notes = Store_default.getState("notes") || [];
     const note = notes[id2];
     if (!note) {
       throw new Error("Note not found");
     }
-    this.box = new St2.BoxLayout({
+    this.title = note.title;
+    this.type = note.type;
+    this.content = note.content;
+    this.color = note.color;
+    this.onUpdate = onUpdate;
+    this.id = id2;
+    this.widget = null;
+    this.createWidget();
+    this.constructType();
+  }
+  constructType() {
+    switch (this.type) {
+      case NOTE_TYPES.TEXT:
+        this.setTextNote();
+        break;
+      case NOTE_TYPES.TASKS:
+        this.setTasksNote();
+        break;
+      case NOTE_TYPES.IMAGE:
+        this.setImageNote();
+        break;
+    }
+  }
+  createWidget() {
+    const widget = new ModalDialog.ModalDialog({});
+    global.display.connect("workareas-changed", () => widget.queue_relayout());
+    widget.setButtons([
+      {
+        label: "Save",
+        action: () => this.save(),
+        key: Clutter2.KEY_S
+      },
+      {
+        label: "Delete",
+        action: () => this.delete()
+      },
+      {
+        label: "Close",
+        action: () => this.close(),
+        key: Clutter2.KEY_Escape
+      }
+    ]);
+    widget.contentLayout.style_class = "note-content-layout";
+    widget.contentLayout.style = `background-color: ${COLORS[this.color]};border-radius: 5px;`;
+    widget.contentLayout.width = NOTE_MODAL.maxWidth;
+    widget.contentLayout.height = NOTE_MODAL.maxHeight;
+    this.widget = widget;
+    widget.open();
+  }
+  setTitle() {
+    const titleBox = new St2.BoxLayout({
+      vertical: false,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "background-color: rgba(0, 0, 0, 0.2);border-radius: 5px 5px 0 0;",
+      x_align: Clutter2.ActorAlign.FILL
+    });
+    const title = new St2.Entry({
+      text: this.title,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-weight: bold; font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
+      x_expand: true
+    });
+    title.clutter_text.connect("text-changed", () => {
+      this.title = title.get_text();
+    });
+    titleBox.connect("button-press-event", () => {
+      title.grab_key_focus();
+    });
+    titleBox.add_child(title);
+    this.widget.contentLayout.add_child(titleBox);
+  }
+  setColorButtons() {
+    const colorButtons = new St2.BoxLayout({
+      vertical: false,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "padding: 5px;",
+      x_align: Clutter2.ActorAlign.END
+    });
+    Object.keys(COLORS).forEach((colorName) => {
+      const color = COLORS[colorName];
+      let style = `background-color: ${color};border-radius: 5px; box-shadow: 0 0 5px rgba(0, 0, 0, 0.5); margin: 0 5px;`;
+      if (colorName === this.color) {
+        style += "border: 2px solid #fff;";
+      }
+      const button = new St2.Button({
+        style,
+        width: 30,
+        height: 30,
+        x_align: Clutter2.ActorAlign.CENTER,
+        y_align: Clutter2.ActorAlign.CENTER
+      });
+      button.connect("clicked", () => {
+        this.color = colorName;
+        this.widget.contentLayout.style = `background-color: ${color};border-radius: 5px;`;
+        this.update();
+      });
+      colorButtons.add_child(button);
+    });
+    this.widget.contentLayout.add_child(colorButtons);
+  }
+  setTextNote() {
+    if (this.widget) {
+      this.widget.contentLayout.destroy_all_children();
+    }
+    this.setTitle();
+    const textArea = new St2.BoxLayout({
+      vertical: true,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "padding: 5px;",
+      x_align: Clutter2.ActorAlign.FILL,
+      y_align: Clutter2.ActorAlign.FILL,
+      x_expand: true,
+      y_expand: true
+    });
+    const text = new St2.Entry({
+      text: this.content,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
+      x_expand: true
+    });
+    let clutterText = text.clutter_text;
+    clutterText.set_single_line_mode(false);
+    clutterText.set_activatable(false);
+    clutterText.set_line_wrap(true);
+    clutterText.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+    clutterText.connect("text-changed", () => {
+      this.content = text.get_text();
+    });
+    textArea.add_child(text);
+    textArea.connect("button-press-event", () => {
+      text.grab_key_focus();
+    });
+    this.widget.contentLayout.add_child(textArea);
+    this.setColorButtons();
+    this.widget.open();
+  }
+  setTasksNote() {
+  }
+  setImageNote() {
+  }
+  save() {
+    this.update();
+    let notes = Store_default.getState("notes");
+    notes[this.id] = {
+      title: this.title,
+      type: this.type,
+      content: this.content,
+      color: this.color
+    };
+    Store_default.setState("notes", notes);
+    this.widget.close();
+    if (typeof this.onUpdate === "function") {
+      this.onUpdate();
+    }
+  }
+  delete() {
+    let notes = Store_default.getState("notes");
+    notes.splice(this.id, 1);
+    Store_default.setState("notes", notes);
+    this.widget.close();
+    if (typeof this.onUpdate === "function") {
+      this.onUpdate();
+    }
+  }
+  close() {
+    this.widget.close();
+  }
+  update() {
+    this.constructType();
+  }
+};
+var NoteModal_default = NoteModal;
+
+// lib/logic/Note.js
+var { St: St3, Clutter: Clutter3 } = imports.gi;
+var { util: Util } = imports.misc;
+var Note = class {
+  constructor({ id: id2, width, height, onUpdate }) {
+    const notes = Store_default.getState("notes") || [];
+    const note = notes[id2];
+    if (!note) {
+      throw new Error("Note not found");
+    }
+    this.box = new St3.BoxLayout({
       vertical: true,
       width,
       height,
       clip_to_allocation: true,
       reactive: true,
-      style: `background-color: ${color};border-radius: 5px;margin-right: 5px;`
+      style: `background-color: ${COLORS[note.color]};border-radius: 5px;margin-right: 5px;`
     });
     this.id = id2;
     this.title = note.title;
     this.type = note.type;
     this.content = note.content;
-    this.color = color;
+    this.color = note.color;
     this.width = width;
     this.height = height;
     this.onUpdate = onUpdate;
     this.constructType();
   }
   setTitle(prefix = "") {
-    const titleText = new St2.Label({
+    const titleText = new St3.Label({
       text: `${prefix} ${this.title}`.trim(),
       clip_to_allocation: true,
       reactive: true,
@@ -196,34 +463,41 @@ var Note = class {
   }
   setTextNote() {
     this.setTitle();
-    const contentText = new St2.Label({
+    const contentText = new St3.Label({
       text: this.content,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 5px;"
     });
+    this.box.connect("button-press-event", () => {
+      Store_default.logInfo("Double clicked");
+      new NoteModal_default({
+        id: this.id,
+        onUpdate: () => this.update()
+      });
+    });
     this.box.add_child(contentText);
   }
   getTaskBox({ title, onClick }) {
-    const taskBox = new St2.BoxLayout({
+    const taskBox = new St3.BoxLayout({
       vertical: false,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 2px;"
     });
-    const taskTitle = new St2.Label({
+    const taskTitle = new St3.Label({
       text: title,
       clip_to_allocation: true,
       reactive: true,
-      x_align: Clutter2.ActorAlign.START,
+      x_align: Clutter3.ActorAlign.START,
       x_expand: true
     });
-    const taskSwitch = new St2.Button({
+    const taskSwitch = new St3.Button({
       reactive: true,
       can_focus: true,
-      x_align: Clutter2.ActorAlign.END,
-      y_align: Clutter2.ActorAlign.CENTER,
-      child: new St2.Label({
+      x_align: Clutter3.ActorAlign.END,
+      y_align: Clutter3.ActorAlign.CENTER,
+      child: new St3.Label({
         text: "Done",
         style: "padding: 5px;font-size: 10px;"
       }),
@@ -252,7 +526,7 @@ var Note = class {
       return acc;
     }, 0);
     this.setTitle(`(${doneTasks}/${this.content.length})`);
-    const tasksBox = new St2.BoxLayout({
+    const tasksBox = new St3.BoxLayout({
       vertical: true,
       clip_to_allocation: true,
       reactive: true,
@@ -280,13 +554,13 @@ var Note = class {
       }
     }
     if (items === 0) {
-      const noTasksText = new St2.Label({
+      const noTasksText = new St3.Label({
         text: "No tasks to do!",
         clip_to_allocation: true,
         reactive: true,
         style: "padding: 5px;",
         opacity: 150,
-        x_align: Clutter2.ActorAlign.CENTER
+        x_align: Clutter3.ActorAlign.CENTER
       });
       tasksBox.add_child(noTasksText);
     }
@@ -294,7 +568,7 @@ var Note = class {
   }
   setImageNote() {
     let style = `background-size: cover;background-image: url("${this.content}");border-radius: 5px;`;
-    const imageBox = new St2.BoxLayout({
+    const imageBox = new St3.BoxLayout({
       clip_to_allocation: true,
       reactive: true,
       can_focus: true,
@@ -302,7 +576,7 @@ var Note = class {
       x_expand: true,
       y_expand: true
     });
-    const imageButton = new St2.Button({
+    const imageButton = new St3.Button({
       clip_to_allocation: true,
       reactive: true,
       can_focus: true,
@@ -337,58 +611,12 @@ var Note = class {
 var Note_default = Note;
 
 // lib/logic/Extension.js
-var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
-var { St: St3, Clutter: Clutter3 } = imports.gi;
-var defaultNotes = [
-  {
-    title: "Note 1",
-    type: "text",
-    content: "This is a text note",
-    color: "primary"
-  },
-  {
-    title: "Note 2",
-    type: "tasks",
-    content: [
-      {
-        title: "Task 1",
-        status: "todo",
-        isDone: false
-      },
-      {
-        title: "Task 2",
-        status: "doing",
-        isDone: false
-      },
-      {
-        title: "Task 3",
-        status: "done",
-        isDone: true
-      }
-    ],
-    color: "default"
-  },
-  {
-    title: "Note 3",
-    type: "image",
-    content: "https://picsum.photos/200/300",
-    color: "success"
-  }
-];
-var defaultNotesConfig = {
-  maxWidth: 300,
-  items: 5,
-  height: 100,
-  colors: {
-    primary: "#3244ad",
-    accent: "#953ca5",
-    success: "#2ab7a9",
-    info: "#00c3e0",
-    warning: "#bf7921",
-    danger: "#bb2626",
-    default: "#646c8a"
-  }
-};
+var {
+  main: Main,
+  ctrlAltTab: CtrlAltTab,
+  modalDialog: ModalDialog2
+} = imports.ui;
+var { St: St4, Clutter: Clutter4 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -398,13 +626,13 @@ var Extension2 = class extends BaseExtension_default {
     super.enable();
     this.initConfigAndState();
     this.initPanelButton();
-    this.widget = new St3.Widget({
+    this.widget = new St4.Widget({
       width: global.screen_width,
       height: 100,
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter3.OffscreenRedirect.ALWAYS);
+    this.widget.set_offscreen_redirect(Clutter4.OffscreenRedirect.ALWAYS);
     Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
@@ -430,15 +658,15 @@ var Extension2 = class extends BaseExtension_default {
     }
     let notesConfig = Store_default.getConfig("notes");
     if (!notesConfig) {
-      Store_default.setConfig("notes", defaultNotesConfig);
+      Store_default.setConfig("notes", DEFAULT_NOTES_CONFIG);
     }
     let notes = Store_default.getState("notes");
     if (notes) {
-      Store_default.setState("notes", defaultNotes);
+      Store_default.setState("notes", DEFAULT_NOTES);
     }
   }
   initPanelButton() {
-    this.panelButton.setLabels({ on: "Hide notes", off: "Show notes" });
+    this.panelButton.setLabels({ on: "Show notes", off: "Hide notes" });
     this.panelButton.setToggleState(Store_default.getConfig("isHidden"));
     this.panelButton.connect("button-press-event", () => {
       let isHidden = !Store_default.getConfig("isHidden");
@@ -448,7 +676,7 @@ var Extension2 = class extends BaseExtension_default {
     });
   }
   initNotesBox() {
-    this.notesBox = new St3.BoxLayout({
+    this.notesBox = new St4.BoxLayout({
       vertical: false,
       width: global.screen_width,
       clip_to_allocation: true,
@@ -458,6 +686,7 @@ var Extension2 = class extends BaseExtension_default {
     this.showNotes();
   }
   showNotes() {
+    this.notesBox.destroy_all_children();
     let shouldBeHidden = Store_default.getConfig("isHidden");
     if (shouldBeHidden) {
       if (this.widget.visible) {
@@ -469,14 +698,9 @@ var Extension2 = class extends BaseExtension_default {
       this.widget.show();
     }
     let notes = Store_default.getState("notes");
-    let notesConfig = Store_default.getConfig("notes");
-    let notesWidth = Math.abs(global.screen_width / notesConfig.items);
-    if (notesWidth > notesConfig.maxWidth) {
-      notesWidth = notesConfig.maxWidth;
-    }
-    let notesHeight = notesWidth * 16 / 9;
-    let maxNotes = Math.abs(global.screen_width / notesWidth);
-    this.notesBox.destroy_all_children();
+    let { notesWidth, notesHeight } = this.getWidthAndHeight();
+    this.widget.set_height(notesHeight);
+    let maxNotes = Math.abs(global.screen_width / notesWidth) - 1;
     for (let i = 0; i < maxNotes; i++) {
       let note = notes[i];
       if (!note) {
@@ -484,12 +708,131 @@ var Extension2 = class extends BaseExtension_default {
       }
       let instance = new Note_default({
         id: i,
-        color: notesConfig.colors[note.color],
         width: notesWidth,
-        height: notesHeight
+        height: notesHeight,
+        onUpdate: () => {
+          Store_default.logInfo("Note updated");
+          this.showNotes();
+          return false;
+        }
       });
       this.notesBox.add_child(instance.box);
     }
+    this.showConfigButtons();
+  }
+  showConfigButtons() {
+    let { notesHeight } = this.getWidthAndHeight();
+    let configBox = new St4.BoxLayout({
+      vertical: true,
+      clip_to_allocation: true,
+      reactive: true,
+      y_expand: true
+    });
+    let addNoteButton = new St4.Button({
+      clip_to_allocation: true,
+      style_class: "simple-notes-config-button",
+      width: 30,
+      height: notesHeight / 3,
+      reactive: true
+    });
+    let addNoteIcon = new St4.Icon({
+      clip_to_allocation: true,
+      icon_name: "list-add-symbolic",
+      icon_size: 15,
+      style_class: "simple-notes-config-icon"
+    });
+    addNoteButton.add_child(addNoteIcon);
+    addNoteButton.connect("button-press-event", () => {
+      this.showAddNoteModal();
+    });
+    configBox.add_child(addNoteButton);
+    let configNotesButton = new St4.Button({
+      clip_to_allocation: true,
+      style_class: "simple-notes-config-button",
+      width: 30,
+      height: notesHeight / 3,
+      reactive: true
+    });
+    let configNotesIcon = new St4.Icon({
+      clip_to_allocation: true,
+      icon_name: "preferences-system-symbolic",
+      icon_size: 15,
+      style_class: "simple-notes-config-icon"
+    });
+    configNotesButton.add_child(configNotesIcon);
+    configNotesButton.connect("button-press-event", () => {
+      this.showConfigNotesModal();
+    });
+    configBox.add_child(configNotesButton);
+    let listNotesButton = new St4.Button({
+      clip_to_allocation: true,
+      style_class: "simple-notes-config-button",
+      width: 30,
+      height: notesHeight / 3,
+      reactive: true
+    });
+    let listNotesIcon = new St4.Icon({
+      clip_to_allocation: true,
+      icon_name: "view-list-symbolic",
+      icon_size: 15,
+      style_class: "simple-notes-config-icon"
+    });
+    listNotesButton.add_child(listNotesIcon);
+    listNotesButton.connect("button-press-event", () => {
+      this.showListNotesModal();
+    });
+    configBox.add_child(listNotesButton);
+    Store_default.log("Config box added");
+    this.notesBox.add_child(configBox);
+  }
+  getWidthAndHeight() {
+    let notesConfig = Store_default.getConfig("notes");
+    let notesWidth = Math.abs(global.screen_width / notesConfig.items);
+    if (notesWidth > notesConfig.maxWidth) {
+      notesWidth = notesConfig.maxWidth;
+    }
+    let notesHeight = notesWidth / 16 * 9;
+    return { notesWidth, notesHeight };
+  }
+  showAddNoteModal() {
+    const modal = new ModalDialog2.ModalDialog({});
+    let title = new St4.Label({
+      text: "Select note type",
+      x_align: Clutter4.ActorAlign.CENTER,
+      y_align: Clutter4.ActorAlign.CENTER,
+      x_expand: true
+    });
+    modal.contentLayout.add_child(title);
+    modal.setButtons([
+      {
+        label: "Text",
+        action: () => {
+          modal.close();
+          this.showAddTextNoteModal();
+        }
+      },
+      {
+        label: "Image",
+        action: () => {
+          modal.close();
+          this.showAddImageNoteModal();
+        }
+      },
+      {
+        label: "Tasks",
+        action: () => {
+          modal.close();
+          this.showAddTasksNoteModal();
+        }
+      },
+      {
+        label: "Cancel",
+        action: () => {
+          modal.close();
+        }
+      }
+    ]);
+    modal.open();
   }
 };
 var Extension_default = Extension2;
@@ -522,6 +865,7 @@ var Dev = class extends Extension_default {
       }
     });
     super.enable();
+    Store_default.logLevel = LOG_LEVELS.INFO;
   }
   disable() {
     global.context.unsafe_mode = false;
