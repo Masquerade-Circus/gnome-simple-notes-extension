@@ -190,6 +190,13 @@ var Extension = class {
     panelButton.set_x_expand(true);
     panelButton.set_can_focus(true);
     panelButton.set_reactive(true);
+    panelButton.state = 0;
+    panelButton.states = [
+      {
+        state: 0,
+        label: "..."
+      }
+    ];
     let label = new St.Label({
       text: "...",
       opacity: 150,
@@ -198,15 +205,40 @@ var Extension = class {
     panelButton.add_child(label);
     panelButton.label = label;
     panelButton.updateLabel = (value) => panelButton.label.set_text(value || "...");
-    panelButton.setLabels = ({ on, off }) => {
-      panelButton.onLabel = on;
-      panelButton.offLabel = off;
+    panelButton.setStates = (states) => {
+      if (!Array.isArray(states)) {
+        throw new Error("States must be an array");
+      }
+      for (let obj of states) {
+        if (typeof obj !== "object" || obj === null || "state" in obj === false || "label" in obj === false) {
+          throw new Error(
+            "State item must be an object with state and label properties"
+          );
+        }
+      }
+      panelButton.states = states;
     };
-    panelButton.setToggleState = (value) => panelButton.updateLabel(
-      value ? panelButton.onLabel : panelButton.offLabel
-    );
-    panelButton.setLabels({ on: "ON", off: "OFF" });
-    panelButton.updateLabel();
+    panelButton.setState = (state) => {
+      let stateObj = panelButton.states.find((s) => s.state === state);
+      if (!stateObj) {
+        throw new Error(`State ${state} not found`);
+      }
+      panelButton.state = state;
+      panelButton.updateLabel(stateObj.label);
+    };
+    panelButton.nextState = () => {
+      let stateIndex = panelButton.states.findIndex(
+        (s) => s.state === panelButton.state
+      );
+      if (stateIndex === -1) {
+        throw new Error(`Current state ${panelButton.state} not found`);
+      }
+      let nextStateIndex = stateIndex + 1;
+      if (nextStateIndex >= panelButton.states.length) {
+        nextStateIndex = 0;
+      }
+      panelButton.setState(panelButton.states[nextStateIndex].state);
+    };
     this.panelButton = panelButton;
     main.panel.addToStatusArea(
       `${Me2.metadata.name} Indicator`,
@@ -666,12 +698,21 @@ var Extension2 = class extends BaseExtension_default {
     }
   }
   initPanelButton() {
-    this.panelButton.setLabels({ on: "Show notes", off: "Hide notes" });
-    this.panelButton.setToggleState(Store_default.getConfig("isHidden"));
+    this.panelButton.setStates([
+      {
+        state: true,
+        label: "Show notes"
+      },
+      {
+        state: false,
+        label: "Hide notes"
+      }
+    ]);
+    this.panelButton.setState(Store_default.getConfig("isHidden"));
     this.panelButton.connect("button-press-event", () => {
       let isHidden = !Store_default.getConfig("isHidden");
       Store_default.setConfig("isHidden", isHidden);
-      this.panelButton.setToggleState(isHidden);
+      this.panelButton.setState(isHidden);
       this.showNotes();
     });
   }
@@ -699,8 +740,12 @@ var Extension2 = class extends BaseExtension_default {
     }
     let notes = Store_default.getState("notes");
     let { notesWidth, notesHeight } = this.getWidthAndHeight();
-    this.widget.set_height(notesHeight);
+    if (this.widget.height !== notesHeight) {
+      this.widget.set_height(notesHeight);
+      this.widget.queue_relayout();
+    }
     let maxNotes = Math.abs(global.screen_width / notesWidth) - 1;
+    maxNotes = 0;
     for (let i = 0; i < maxNotes; i++) {
       let note = notes[i];
       if (!note) {
@@ -718,72 +763,6 @@ var Extension2 = class extends BaseExtension_default {
       });
       this.notesBox.add_child(instance.box);
     }
-    this.showConfigButtons();
-  }
-  showConfigButtons() {
-    let { notesHeight } = this.getWidthAndHeight();
-    let configBox = new St4.BoxLayout({
-      vertical: true,
-      clip_to_allocation: true,
-      reactive: true,
-      y_expand: true
-    });
-    let addNoteButton = new St4.Button({
-      clip_to_allocation: true,
-      style_class: "simple-notes-config-button",
-      width: 30,
-      height: notesHeight / 3,
-      reactive: true
-    });
-    let addNoteIcon = new St4.Icon({
-      clip_to_allocation: true,
-      icon_name: "list-add-symbolic",
-      icon_size: 15,
-      style_class: "simple-notes-config-icon"
-    });
-    addNoteButton.add_child(addNoteIcon);
-    addNoteButton.connect("button-press-event", () => {
-      this.showAddNoteModal();
-    });
-    configBox.add_child(addNoteButton);
-    let configNotesButton = new St4.Button({
-      clip_to_allocation: true,
-      style_class: "simple-notes-config-button",
-      width: 30,
-      height: notesHeight / 3,
-      reactive: true
-    });
-    let configNotesIcon = new St4.Icon({
-      clip_to_allocation: true,
-      icon_name: "preferences-system-symbolic",
-      icon_size: 15,
-      style_class: "simple-notes-config-icon"
-    });
-    configNotesButton.add_child(configNotesIcon);
-    configNotesButton.connect("button-press-event", () => {
-      this.showConfigNotesModal();
-    });
-    configBox.add_child(configNotesButton);
-    let listNotesButton = new St4.Button({
-      clip_to_allocation: true,
-      style_class: "simple-notes-config-button",
-      width: 30,
-      height: notesHeight / 3,
-      reactive: true
-    });
-    let listNotesIcon = new St4.Icon({
-      clip_to_allocation: true,
-      icon_name: "view-list-symbolic",
-      icon_size: 15,
-      style_class: "simple-notes-config-icon"
-    });
-    listNotesButton.add_child(listNotesIcon);
-    listNotesButton.connect("button-press-event", () => {
-      this.showListNotesModal();
-    });
-    configBox.add_child(listNotesButton);
-    Store_default.log("Config box added");
-    this.notesBox.add_child(configBox);
   }
   getWidthAndHeight() {
     let notesConfig = Store_default.getConfig("notes");
@@ -791,7 +770,7 @@ var Extension2 = class extends BaseExtension_default {
     if (notesWidth > notesConfig.maxWidth) {
       notesWidth = notesConfig.maxWidth;
     }
-    let notesHeight = notesWidth / 16 * 9;
+    let notesHeight = Math.abs(notesWidth / 16 * 9);
     return { notesWidth, notesHeight };
   }
   showAddNoteModal() {
