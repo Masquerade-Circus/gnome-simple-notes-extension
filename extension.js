@@ -1,4 +1,20 @@
 "use strict";
+var __defProp = Object.defineProperty;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
 
 // lib/core/Store.js
 var { GLib, Gio } = imports.gi;
@@ -280,6 +296,8 @@ var NoteModal = class {
     this.onUpdate = onUpdate;
     this.id = id2;
     this.isNew = isNew || false;
+    this.oldContent = null;
+    this.newContent = null;
     this.widget = null;
     this.createWidget();
     this.update();
@@ -405,6 +423,10 @@ var NoteModal = class {
     this.hide();
     if (this.isNew) {
       this.delete();
+    } else {
+      if (this.oldContent) {
+        this.content = this.oldContent;
+      }
     }
     this.widget.destroy();
   }
@@ -453,33 +475,131 @@ var ImageNoteModal = class extends NoteModal {
 };
 
 // lib/logic/modals/TasksNoteModal.js
+var { St: St4, Clutter: Clutter4 } = imports.gi;
+var { checkBox: CheckBox } = imports.ui;
 var TasksNoteModal = class extends NoteModal {
   constructor({ id: id2, onUpdate }) {
     super({ id: id2, onUpdate });
   }
   constructBody() {
+    this.setTitle();
+    this.createTasksBox();
+    this.oldContent = this.content.map((task) => __spreadValues({}, task));
+    this.content = this.content.map((task) => __spreadValues({}, task));
+    this.content.forEach((task) => {
+      this.tasksBox.add_child(this.getTaskBox(task));
+    });
+    this.tasksBox.add_child(this.getNewTaskBox());
+    this.setColorButtons();
+    setTimeout(() => {
+      this.newTaskEntry.grab_key_focus();
+    }, 100);
+  }
+  createTasksBox() {
+    const tasksBox = new St4.BoxLayout({
+      vertical: true,
+      reactive: true,
+      x_expand: true,
+      y_expand: true,
+      style: "padding: 5px;",
+      x_align: Clutter4.ActorAlign.FILL,
+      y_align: Clutter4.ActorAlign.FILL
+    });
+    const scrollView = new St4.ScrollView({
+      hscrollbar_policy: St4.PolicyType.NEVER,
+      vscrollbar_policy: St4.PolicyType.AUTOMATIC,
+      overlay_scrollbars: true,
+      reactive: true,
+      x_expand: true,
+      y_expand: true
+    });
+    scrollView.add_actor(tasksBox);
+    this.widget.contentLayout.add_child(scrollView);
+    this.tasksBox = tasksBox;
+  }
+  getTaskBox(task) {
+    const taskBox = new St4.BoxLayout({
+      vertical: false,
+      reactive: true,
+      style: "padding: 2px;"
+    });
+    const checkBox = new CheckBox.CheckBox("");
+    checkBox.checked = task.isDone;
+    checkBox.connect("clicked", () => {
+      task.isDone = !task.isDone;
+      this.update();
+    });
+    const taskEntry = new St4.Entry({
+      text: task.title,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 2px 5px 1px;",
+      x_expand: true
+    });
+    taskEntry.clutter_text.connect("text-changed", () => {
+      task.title = taskEntry.get_text();
+    });
+    taskEntry.clutter_text.connect("activate", () => {
+      if (task.title === "") {
+        this.content = this.content.filter((t) => t !== task);
+        this.update();
+      }
+    });
+    taskBox.add_child(checkBox);
+    taskBox.add_child(taskEntry);
+    return taskBox;
+  }
+  getNewTaskBox() {
+    const task = {
+      title: "",
+      isDone: false
+    };
+    const taskBox = new St4.BoxLayout({
+      vertical: false,
+      reactive: true,
+      style: "padding: 2px;"
+    });
+    const taskEntry = new St4.Entry({
+      text: task.title,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 2px 5px 1px;",
+      x_expand: true
+    });
+    taskEntry.clutter_text.connect("text-changed", () => {
+      task.title = taskEntry.get_text();
+    });
+    taskEntry.clutter_text.connect("activate", () => {
+      if (task.title !== "") {
+        this.content.push(task);
+        this.update();
+      }
+    });
+    taskBox.add_child(taskEntry);
+    this.newTaskEntry = taskEntry;
+    return taskBox;
   }
 };
 
 // lib/logic/modals/TextNoteModal.js
-var { St: St4, Clutter: Clutter4, Pango } = imports.gi;
+var { St: St5, Clutter: Clutter5, Pango } = imports.gi;
 var TextNoteModal = class extends NoteModal {
   constructor({ id: id2, onUpdate }) {
     super({ id: id2, onUpdate });
   }
   constructBody() {
     this.setTitle();
-    const textArea = new St4.BoxLayout({
+    const textArea = new St5.BoxLayout({
       vertical: true,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 5px;",
-      x_align: Clutter4.ActorAlign.FILL,
-      y_align: Clutter4.ActorAlign.FILL,
+      x_align: Clutter5.ActorAlign.FILL,
+      y_align: Clutter5.ActorAlign.FILL,
       x_expand: true,
       y_expand: true
     });
-    const text = new St4.Entry({
+    const text = new St5.Entry({
       text: this.content,
       clip_to_allocation: true,
       reactive: true,
@@ -504,7 +624,7 @@ var TextNoteModal = class extends NoteModal {
 };
 
 // lib/logic/notes/Note.js
-var { St: St5 } = imports.gi;
+var { St: St6 } = imports.gi;
 var Note = class {
   constructor({ id: id2, width, height, onUpdate }) {
     const notes = Store_default.getState("notes") || [];
@@ -512,7 +632,7 @@ var Note = class {
     if (!note) {
       throw new Error("Note not found");
     }
-    this.box = new St5.BoxLayout({
+    this.box = new St6.BoxLayout({
       vertical: true,
       width,
       height,
@@ -553,7 +673,7 @@ var Note = class {
     this.constructBody();
   }
   setTitle(prefix = "") {
-    const titleText = new St5.Label({
+    const titleText = new St6.Label({
       text: `${prefix} ${this.title}`.trim(),
       clip_to_allocation: true,
       reactive: true,
@@ -571,16 +691,27 @@ var Note = class {
     this.box.destroy_all_children();
     this.constructBody();
   }
+  save() {
+    const notes = Store_default.getState("notes") || [];
+    notes[this.id] = {
+      title: this.title,
+      type: this.type,
+      content: this.content,
+      color: this.color
+    };
+    Store_default.setState("notes", notes);
+    this.update();
+  }
 };
 
 // lib/logic/notes/ImageNote.js
-var { St: St6 } = imports.gi;
+var { St: St7 } = imports.gi;
 var ImageNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
-    const imageBox = new St6.BoxLayout({
+    const imageBox = new St7.BoxLayout({
       clip_to_allocation: true,
       reactive: true,
       can_focus: true,
@@ -593,8 +724,8 @@ var ImageNote = class extends Note {
 };
 
 // lib/logic/notes/TasksNote.js
-var { St: St7, Clutter: Clutter5 } = imports.gi;
-var { checkBox: CheckBox } = imports.ui;
+var { St: St8, Clutter: Clutter6 } = imports.gi;
+var { checkBox: CheckBox2 } = imports.ui;
 var TasksNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
@@ -605,52 +736,46 @@ var TasksNote = class extends Note {
       0
     );
     this.setTitle(`(${doneTasksCount}/${this.content.length})`);
-    const tasksBox = new St7.BoxLayout({
+    const tasksBox = new St8.BoxLayout({
       vertical: true,
       reactive: true,
       style: "padding: 5px;"
     });
-    const scrollView = new St7.ScrollView({
-      hscrollbar_policy: St7.PolicyType.NEVER,
-      vscrollbar_policy: St7.PolicyType.AUTOMATIC,
+    const scrollView = new St8.ScrollView({
+      hscrollbar_policy: St8.PolicyType.NEVER,
+      vscrollbar_policy: St8.PolicyType.AUTOMATIC,
       overlay_scrollbars: true,
       reactive: true
     });
     scrollView.add_actor(tasksBox);
-    this.content.forEach((task, i) => {
-      Store_default.log(i, task);
-      tasksBox.add_child(this.getTaskBox({ task, onClick: this.onUpdate }));
+    this.content.forEach((task) => {
+      tasksBox.add_child(this.getTaskBox(task));
     });
     if (this.content.length === 0) {
-      const noTasksText = new St7.Label({
+      const noTasksText = new St8.Label({
         text: "No tasks to do!",
         clip_to_allocation: true,
         reactive: true,
         style: "padding: 5px;",
         opacity: 150,
-        x_align: Clutter5.ActorAlign.CENTER
+        x_align: Clutter6.ActorAlign.CENTER
       });
       tasksBox.add_child(noTasksText);
     }
     this.box.add_child(scrollView);
   }
-  getTaskBox({ task, onClick }) {
-    const taskBox = new St7.BoxLayout({
+  getTaskBox(task) {
+    const taskBox = new St8.BoxLayout({
       vertical: false,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 2px;"
     });
-    const taskCheckBox = new CheckBox.CheckBox(task.title);
+    const taskCheckBox = new CheckBox2.CheckBox(task.title);
     taskCheckBox.checked = task.isDone;
     taskCheckBox.connect("clicked", () => {
-      let idx = this.content.findIndex((t) => t === task);
-      if (idx !== -1) {
-        this.content[idx].isDone = !task.isDone;
-      }
-      if (typeof onClick === "function") {
-        onClick();
-      }
+      task.isDone = !task.isDone;
+      this.save();
     });
     taskBox.add_child(taskCheckBox);
     return taskBox;
@@ -658,14 +783,14 @@ var TasksNote = class extends Note {
 };
 
 // lib/logic/notes/TextNote.js
-var { St: St8 } = imports.gi;
+var { St: St9 } = imports.gi;
 var TextNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
     this.setTitle();
-    const contentText = new St8.Label({
+    const contentText = new St9.Label({
       text: this.content,
       clip_to_allocation: true,
       reactive: true,
@@ -700,7 +825,7 @@ var createNewNote = ({ type, onUpdate }) => {
 
 // lib/logic/Extension.js
 var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
-var { St: St9, Clutter: Clutter6 } = imports.gi;
+var { St: St10, Clutter: Clutter7 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -737,7 +862,7 @@ var Extension2 = class extends BaseExtension_default {
       Store_default.setConfig("notes", DEFAULT_NOTES_CONFIG);
     }
     let notes = Store_default.getState("notes");
-    if (notes) {
+    if (!notes) {
       Store_default.setState("notes", DEFAULT_NOTES);
     }
   }
@@ -772,13 +897,13 @@ var Extension2 = class extends BaseExtension_default {
     this.showNotesButton = showNotesButton;
   }
   initWidget() {
-    this.widget = new St9.Widget({
+    this.widget = new St10.Widget({
       width: global.screen_width,
       height: 100,
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter6.OffscreenRedirect.ALWAYS);
+    this.widget.set_offscreen_redirect(Clutter7.OffscreenRedirect.ALWAYS);
     Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
@@ -792,7 +917,7 @@ var Extension2 = class extends BaseExtension_default {
     );
   }
   initNotesBox() {
-    this.notesBox = new St9.BoxLayout({
+    this.notesBox = new St10.BoxLayout({
       vertical: false,
       width: global.screen_width,
       clip_to_allocation: true,
