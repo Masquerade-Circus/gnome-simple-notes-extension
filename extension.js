@@ -590,21 +590,20 @@ var TextNoteModal = class extends NoteModal {
   constructBody() {
     this.setTitle();
     const textArea = new St5.BoxLayout({
-      vertical: true,
       clip_to_allocation: true,
+      vertical: true,
       reactive: true,
       style: "padding: 5px;",
-      x_align: Clutter5.ActorAlign.FILL,
-      y_align: Clutter5.ActorAlign.FILL,
       x_expand: true,
       y_expand: true
     });
+    this.widget.contentLayout.add_child(textArea);
     const text = new St5.Entry({
       text: this.content,
-      clip_to_allocation: true,
       reactive: true,
       style: "font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
-      x_expand: true
+      x_expand: true,
+      y_expand: false
     });
     let clutterText = text.clutter_text;
     clutterText.set_single_line_mode(false);
@@ -618,7 +617,6 @@ var TextNoteModal = class extends NoteModal {
     textArea.connect("button-press-event", () => {
       text.grab_key_focus();
     });
-    this.widget.contentLayout.add_child(textArea);
     this.setColorButtons();
   }
 };
@@ -691,7 +689,7 @@ var Note = class {
     this.box.destroy_all_children();
     this.constructBody();
   }
-  save() {
+  save({ reload = true }) {
     const notes = Store_default.getState("notes") || [];
     notes[this.id] = {
       title: this.title,
@@ -700,7 +698,9 @@ var Note = class {
       color: this.color
     };
     Store_default.setState("notes", notes);
-    this.update();
+    if (reload) {
+      this.update();
+    }
   }
 };
 
@@ -783,20 +783,45 @@ var TasksNote = class extends Note {
 };
 
 // lib/logic/notes/TextNote.js
-var { St: St9 } = imports.gi;
+var { St: St9, Pango: Pango2, Clutter: Clutter7 } = imports.gi;
 var TextNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
     this.setTitle();
-    const contentText = new St9.Label({
+    const textArea = new St9.BoxLayout({
+      clip_to_allocation: true,
+      vertical: true,
+      reactive: true,
+      style: "padding: 5px;",
+      x_expand: true,
+      y_expand: true
+    });
+    const text = new St9.Entry({
       text: this.content,
       clip_to_allocation: true,
       reactive: true,
-      style: "padding: 5px;"
+      style: "font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
+      x_expand: true
     });
-    this.box.add_child(contentText);
+    let clutterText = text.clutter_text;
+    clutterText.set_single_line_mode(false);
+    clutterText.set_activatable(false);
+    clutterText.set_line_wrap(true);
+    clutterText.set_line_wrap_mode(Pango2.WrapMode.WORD_CHAR);
+    clutterText.connect("text-changed", () => {
+      this.content = text.get_text();
+      this.save({
+        reload: false
+      });
+    });
+    textArea.add_child(text);
+    textArea.connect("button-press-event", () => {
+      text.grab_key_focus();
+      return Clutter7.EVENT_STOP;
+    });
+    this.box.add_child(textArea);
   }
 };
 
@@ -825,7 +850,7 @@ var createNewNote = ({ type, onUpdate }) => {
 
 // lib/logic/Extension.js
 var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
-var { St: St10, Clutter: Clutter7 } = imports.gi;
+var { St: St10, Clutter: Clutter8 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -903,7 +928,7 @@ var Extension2 = class extends BaseExtension_default {
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter7.OffscreenRedirect.ALWAYS);
+    this.widget.set_offscreen_redirect(Clutter8.OffscreenRedirect.ALWAYS);
     Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
