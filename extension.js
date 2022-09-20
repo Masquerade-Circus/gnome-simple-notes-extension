@@ -118,6 +118,16 @@ ${JSON.stringify(arg, null, 2)}`;
     );
     return this.store.config ? this.store.config[key] : null;
   }
+  clearConfig() {
+    this.logDebug("clearConfig");
+    this.store.config = {};
+    this.saveSettings();
+  }
+  clearState() {
+    this.logDebug("clearState");
+    this.store.state = {};
+    this.saveSettings();
+  }
 };
 var Store_default = new Store();
 
@@ -190,9 +200,43 @@ var DEFAULT_NOTES = [
     color: "success"
   }
 ];
+var POSITION_TYPES = {
+  TOP: "top",
+  LEFT: "left",
+  RIGHT: "right"
+};
+var SIZES = {
+  SMALLEST: {
+    width: 160,
+    height: Math.trunc(160 / 16 * 9),
+    label: "Smallest"
+  },
+  SMALL: {
+    width: 240,
+    height: Math.trunc(240 / 16 * 9),
+    label: "Small"
+  },
+  MEDIUM: {
+    width: 320,
+    height: Math.trunc(320 / 16 * 9),
+    icon: "view-medium-symbolic",
+    label: "Medium"
+  },
+  LARGE: {
+    width: 400,
+    height: Math.trunc(400 / 16 * 9),
+    label: "Large"
+  },
+  FULL: {
+    width: 640,
+    height: Math.trunc(640 / 16 * 9),
+    label: "Full"
+  }
+};
 var DEFAULT_NOTES_CONFIG = {
-  maxWidth: 240,
-  items: 5
+  width: SIZES.SMALL.width,
+  height: SIZES.SMALL.height,
+  position: POSITION_TYPES.TOP
 };
 
 // lib/core/BaseExtension.js
@@ -406,7 +450,7 @@ var NoteModal = class {
     this.hide();
     this.widget.destroy();
     if (typeof this.onUpdate === "function") {
-      this.onUpdate();
+      setTimeout(() => this.onUpdate(), 100);
     }
   }
   delete() {
@@ -416,7 +460,7 @@ var NoteModal = class {
     this.hide();
     this.widget.destroy();
     if (typeof this.onUpdate === "function") {
-      this.onUpdate();
+      setTimeout(() => this.onUpdate(), 100);
     }
   }
   close() {
@@ -636,7 +680,7 @@ var Note = class {
       height,
       clip_to_allocation: true,
       reactive: true,
-      style: `background-color: ${COLORS[note.color]};border-radius: 5px;margin-right: 5px;`
+      style: `background-color: ${COLORS[note.color]};border-radius: 5px;margin: 5px;`
     });
     this.box.connect("button-press-event", () => {
       switch (note.type) {
@@ -849,7 +893,7 @@ var createNewNote = ({ type, onUpdate }) => {
 };
 
 // lib/logic/Extension.js
-var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
+var { main: Main, ctrlAltTab: CtrlAltTab, popupMenu: PopupMenu } = imports.ui;
 var { St: St10, Clutter: Clutter7 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
@@ -857,6 +901,8 @@ var Extension2 = class extends BaseExtension_default {
     this.widget = null;
     this.addNoteButton = null;
     this.showNotesButton = null;
+    this.notesBox = null;
+    this.scrollView = null;
   }
   enable() {
     super.enable();
@@ -879,12 +925,20 @@ var Extension2 = class extends BaseExtension_default {
   }
   initConfigAndState() {
     let isHidden = Store_default.getConfig("isHidden");
-    if (isHidden === void 0 || isHidden === null) {
+    if (typeof isHidden !== "boolean") {
       Store_default.setConfig("isHidden", false);
     }
-    let notesConfig = Store_default.getConfig("notes");
-    if (!notesConfig) {
-      Store_default.setConfig("notes", DEFAULT_NOTES_CONFIG);
+    let width = Store_default.getConfig("width");
+    if (!width) {
+      Store_default.setConfig("width", DEFAULT_NOTES_CONFIG.width);
+    }
+    let height = Store_default.getConfig("height");
+    if (!height) {
+      Store_default.setConfig("height", DEFAULT_NOTES_CONFIG.height);
+    }
+    let position = Store_default.getConfig("position");
+    if (!position) {
+      Store_default.setConfig("position", DEFAULT_NOTES_CONFIG.position);
     }
     let notes = Store_default.getState("notes");
     if (!notes) {
@@ -892,6 +946,11 @@ var Extension2 = class extends BaseExtension_default {
     }
   }
   initPanelButtons() {
+    this.initConfigPanelButton();
+    this.initAddNotePanelButton();
+    this.initShowNotesPanelButton();
+  }
+  initAddNotePanelButton() {
     const addNoteButton = this.addPanelButton({
       role: "Add note",
       dontCreateMenu: false
@@ -901,6 +960,8 @@ var Extension2 = class extends BaseExtension_default {
     addNoteButton.menu.addAction("Image", () => this.addNote(NOTE_TYPES.IMAGE));
     addNoteButton.menu.addAction("Tasks", () => this.addNote(NOTE_TYPES.TASKS));
     this.addNoteButton = addNoteButton;
+  }
+  initShowNotesPanelButton() {
     const showNotesButton = this.addPanelButton({ role: "Indicator" });
     showNotesButton.setStates([
       {
@@ -921,6 +982,40 @@ var Extension2 = class extends BaseExtension_default {
     });
     this.showNotesButton = showNotesButton;
   }
+  initConfigPanelButton() {
+    const configButton = this.configButton || this.addPanelButton({
+      role: "Config",
+      dontCreateMenu: false
+    });
+    configButton.setLabel("\u2699");
+    configButton.menu.removeAll();
+    configButton.menu.addMenuItem(
+      new PopupMenu.PopupSeparatorMenuItem("Position")
+    );
+    configButton.menu.addAction("Top", () => {
+      this.movePositionTo(POSITION_TYPES.TOP);
+    });
+    configButton.menu.addAction("Left", () => {
+      this.movePositionTo(POSITION_TYPES.LEFT);
+    });
+    configButton.menu.addAction("Right", () => {
+      this.movePositionTo(POSITION_TYPES.RIGHT);
+    });
+    configButton.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem("Size"));
+    Object.values(SIZES).forEach(({ width, height, label }) => {
+      let isActive = width === Store_default.getConfig("width");
+      configButton.menu.addAction(
+        `${label} (${width}x${height}) ${isActive ? "\u2713" : ""}`,
+        () => {
+          Store_default.setConfig("width", width);
+          Store_default.setConfig("height", height);
+          this.initConfigPanelButton();
+          this.showNotes();
+        }
+      );
+    });
+    this.configButton = configButton;
+  }
   initWidget() {
     this.widget = new St10.Widget({
       width: global.screen_width,
@@ -929,54 +1024,110 @@ var Extension2 = class extends BaseExtension_default {
       reactive: true
     });
     this.widget.set_offscreen_redirect(Clutter7.OffscreenRedirect.ALWAYS);
-    Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
       "Simple Notes",
       "focus-top-bar-symbolic",
       { sortGroup: CtrlAltTab.SortGroup.TOP }
     );
-    global.display.connect(
-      "workareas-changed",
-      () => this.widget.queue_relayout()
-    );
+    global.display.connect("workareas-changed", () => this.setPositions());
+    Main.layoutManager.connect("monitors-changed", () => this.setPositions());
+    this.widget.connect("destroy", () => {
+      Main.layoutManager.removeChrome(this.widget);
+    });
   }
   initNotesBox() {
     this.notesBox = new St10.BoxLayout({
-      vertical: false,
-      width: global.screen_width,
       clip_to_allocation: true,
+      vertical: false,
       reactive: true
     });
-    this.widget.add_child(this.notesBox);
+    const scrollView = new St10.ScrollView({
+      hscrollbar_policy: St10.PolicyType.AUTOMATIC,
+      vscrollbar_policy: St10.PolicyType.NEVER,
+      overlay_scrollbars: true,
+      reactive: true,
+      style_class: "vfade"
+    });
+    scrollView.add_actor(this.notesBox);
+    this.scrollView = scrollView;
+    this.widget.add_child(scrollView);
     this.showNotes();
   }
-  showNotes() {
-    this.notesBox.destroy_all_children();
+  movePositionTo(position) {
+    let currentPosition = Store_default.getConfig("position");
+    if (currentPosition === POSITION_TYPES.TOP) {
+      Main.layoutManager.panelBox.remove_child(this.widget);
+    } else {
+      Main.layoutManager.removeChrome(this.widget);
+    }
+    if (position === POSITION_TYPES.TOP) {
+      Main.layoutManager.panelBox.add(this.widget);
+    } else {
+      Main.layoutManager.addChrome(this.widget, {
+        affectsStruts: true,
+        affectsInputRegion: true,
+        trackFullscreen: true
+      });
+    }
+    Store_default.setConfig("position", position);
+    this.showNotes();
+  }
+  setPositions() {
+    let position = Store_default.getConfig("position");
+    let { notesWidth, notesHeight } = this.getNotesWidthAndHeight();
+    const vertical = position === POSITION_TYPES.LEFT || position === POSITION_TYPES.RIGHT;
+    const widgetWidth = vertical ? notesWidth + 10 : global.screen_width;
+    const widgetHeight = vertical ? global.screen_height : notesHeight + 10;
+    const x = position === POSITION_TYPES.RIGHT ? global.screen_width - widgetWidth : 0;
+    const y = position === POSITION_TYPES.BOTTOM ? global.screen_height - widgetHeight : 0;
+    this.widget.width = widgetWidth;
+    this.widget.height = widgetHeight;
+    this.widget.vertical = vertical;
+    this.widget.x = x;
+    this.widget.y = y;
+    this.notesBox.vertical = vertical;
+    this.scrollView.width = widgetWidth;
+    this.scrollView.height = widgetHeight;
+    this.scrollView.hscrollbar_policy = vertical ? St10.PolicyType.NEVER : St10.PolicyType.AUTOMATIC;
+    this.scrollView.vscrollbar_policy = vertical ? St10.PolicyType.AUTOMATIC : St10.PolicyType.NEVER;
+    Store_default.log(position, x, y, widgetWidth, widgetHeight, vertical);
     let shouldBeHidden = Store_default.getConfig("isHidden");
     if (shouldBeHidden) {
       if (this.widget.visible) {
         this.widget.hide();
+        if (position === POSITION_TYPES.TOP) {
+          Main.layoutManager.panelBox.remove_child(this.widget);
+        } else {
+          Main.layoutManager.removeChrome(this.widget);
+        }
       }
       return;
     }
     if (!this.widget.visible) {
+      if (position === POSITION_TYPES.TOP) {
+        Main.layoutManager.panelBox.add(this.widget);
+      } else {
+        Main.layoutManager.addChrome(this.widget, {
+          affectsStruts: true,
+          affectsInputRegion: true,
+          trackFullscreen: true
+        });
+      }
       this.widget.show();
     }
+    this.widget.queue_relayout();
+  }
+  showNotes() {
+    this.notesBox.destroy_all_children();
+    this.setPositions();
     let notes = Store_default.getState("notes");
-    let { notesWidth, notesHeight } = this.getWidthAndHeight();
-    if (this.widget.height !== notesHeight) {
-      this.widget.set_height(notesHeight);
-      this.widget.queue_relayout();
-    }
-    let maxNotes = Math.trunc(global.screen_width / notesWidth) - 1;
-    for (let i = 0; i < maxNotes; i++) {
-      let note = notes[i];
-      if (!note) {
-        break;
-      }
+    let { notesWidth, notesHeight } = this.getNotesWidthAndHeight();
+    this.widget.set_height(notesHeight + 10);
+    this.widget.queue_relayout();
+    notes.forEach((note, id2) => {
       let options = {
-        id: i,
+        id: id2,
         width: notesWidth,
         height: notesHeight,
         onUpdate: () => {
@@ -1001,14 +1152,10 @@ var Extension2 = class extends BaseExtension_default {
         throw new Error(`Invalid note type: ${note.type}`);
       }
       this.notesBox.add_child(instance.box);
-    }
+    });
   }
-  getWidthAndHeight() {
-    let notesConfig = Store_default.getConfig("notes");
-    let notesWidth = Math.trunc(global.screen_width / notesConfig.items);
-    if (notesWidth > notesConfig.maxWidth) {
-      notesWidth = notesConfig.maxWidth;
-    }
+  getNotesWidthAndHeight() {
+    let notesWidth = Store_default.getConfig("width");
     let notesHeight = Math.trunc(notesWidth / 16 * 9);
     return { notesWidth, notesHeight };
   }
