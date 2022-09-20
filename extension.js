@@ -196,9 +196,10 @@ var NoteModal = class {
     this.constructType();
   }
   constructType() {
-    if (this.widget) {
-      this.widget.contentLayout.destroy_all_children();
+    if (!this.widget) {
+      throw new Error("Widget not created");
     }
+    this.widget.contentLayout.destroy_all_children();
     switch (this.type) {
       case NOTE_TYPES.TEXT:
         this.setTextNote();
@@ -210,6 +211,7 @@ var NoteModal = class {
         this.setImageNote();
         break;
     }
+    this.show();
   }
   createWidget() {
     const widget = new ModalDialog.ModalDialog({});
@@ -235,7 +237,6 @@ var NoteModal = class {
     widget.contentLayout.width = NOTE_MODAL.maxWidth;
     widget.contentLayout.height = NOTE_MODAL.maxHeight;
     this.widget = widget;
-    widget.open();
   }
   setTitle() {
     const titleBox = new St.BoxLayout({
@@ -324,7 +325,6 @@ var NoteModal = class {
     });
     this.widget.contentLayout.add_child(textArea);
     this.setColorButtons();
-    this.widget.open();
   }
   setTasksNote() {
   }
@@ -341,10 +341,29 @@ var NoteModal = class {
       y_expand: true
     });
     this.widget.contentLayout.add_child(imageArea);
+    const imageInput = new St.Entry({
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 5px;",
+      x_expand: true,
+      text: this.content
+    });
+    this.newContent = null;
+    imageInput.clutter_text.connect("text-changed", () => {
+      this.newContent = imageInput.get_text();
+    });
+    this.widget.contentLayout.add_child(imageInput);
+  }
+  hide() {
+    this.widget.close();
+  }
+  show() {
     this.widget.open();
   }
   save() {
-    this.update();
+    if (this.newContent) {
+      this.content = this.newContent;
+    }
     let notes = Store_default.getState("notes");
     notes[this.id] = {
       title: this.title,
@@ -354,7 +373,8 @@ var NoteModal = class {
     };
     Store_default.setState("notes", notes);
     this.isNew = false;
-    this.widget.close();
+    this.hide();
+    this.widget.destroy();
     if (typeof this.onUpdate === "function") {
       this.onUpdate();
     }
@@ -363,13 +383,14 @@ var NoteModal = class {
     let notes = Store_default.getState("notes");
     notes.splice(this.id, 1);
     Store_default.setState("notes", notes);
-    this.widget.close();
+    this.hide();
+    this.widget.destroy();
     if (typeof this.onUpdate === "function") {
       this.onUpdate();
     }
   }
   close() {
-    this.widget.close();
+    this.hide();
     if (this.isNew) {
       this.delete();
     }
