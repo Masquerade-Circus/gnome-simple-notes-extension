@@ -582,7 +582,7 @@ var TasksNoteModal = class extends NoteModal {
 };
 
 // lib/logic/modals/TextNoteModal.js
-var { St: St5, Clutter: Clutter5, Pango } = imports.gi;
+var { St: St5, Pango } = imports.gi;
 var TextNoteModal = class extends NoteModal {
   constructor({ id: id2, onUpdate }) {
     super({ id: id2, onUpdate });
@@ -724,7 +724,7 @@ var ImageNote = class extends Note {
 };
 
 // lib/logic/notes/TasksNote.js
-var { St: St8, Clutter: Clutter6 } = imports.gi;
+var { St: St8, Clutter: Clutter5 } = imports.gi;
 var { checkBox: CheckBox2 } = imports.ui;
 var TasksNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
@@ -758,7 +758,7 @@ var TasksNote = class extends Note {
         reactive: true,
         style: "padding: 5px;",
         opacity: 150,
-        x_align: Clutter6.ActorAlign.CENTER
+        x_align: Clutter5.ActorAlign.CENTER
       });
       tasksBox.add_child(noTasksText);
     }
@@ -783,7 +783,7 @@ var TasksNote = class extends Note {
 };
 
 // lib/logic/notes/TextNote.js
-var { St: St9, Pango: Pango2, Clutter: Clutter7 } = imports.gi;
+var { St: St9, Pango: Pango2, Clutter: Clutter6 } = imports.gi;
 var TextNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
@@ -819,7 +819,7 @@ var TextNote = class extends Note {
     textArea.add_child(text);
     textArea.connect("button-press-event", () => {
       text.grab_key_focus();
-      return Clutter7.EVENT_STOP;
+      return Clutter6.EVENT_STOP;
     });
     this.box.add_child(textArea);
   }
@@ -850,7 +850,7 @@ var createNewNote = ({ type, onUpdate }) => {
 
 // lib/logic/Extension.js
 var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
-var { St: St10, Clutter: Clutter8 } = imports.gi;
+var { St: St10, Clutter: Clutter7 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -928,7 +928,7 @@ var Extension2 = class extends BaseExtension_default {
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter8.OffscreenRedirect.ALWAYS);
+    this.widget.set_offscreen_redirect(Clutter7.OffscreenRedirect.ALWAYS);
     Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
