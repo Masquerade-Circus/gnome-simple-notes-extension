@@ -146,18 +146,23 @@ var DEFAULT_NOTES = [
     content: [
       {
         title: "Task 1",
-        status: "todo",
-        isDone: false
+        isDone: true
       },
       {
         title: "Task 2",
-        status: "doing",
         isDone: false
       },
       {
         title: "Task 3",
-        status: "done",
         isDone: true
+      },
+      {
+        title: "Task 4",
+        isDone: false
+      },
+      {
+        title: "Task 5",
+        isDone: false
       }
     ],
     color: "default"
@@ -595,36 +600,28 @@ var TasksNote = class extends Note {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
-    let taskBoxHeight = this.height - 25;
-    let maxItems = Math.trunc(taskBoxHeight / 20);
-    let items = 0;
-    let undoneTasks = this.content.filter((task) => !task.isDone);
-    let doneTasks = this.content.filter((task) => task.isDone);
-    let sortedTasks = undoneTasks.concat(doneTasks);
-    this.setTitle(`(${doneTasks.length}/${this.content.length})`);
+    let doneTasksCount = this.content.reduce(
+      (acc, task) => task.isDone ? acc += 1 : acc,
+      0
+    );
+    this.setTitle(`(${doneTasksCount}/${this.content.length})`);
     const tasksBox = new St7.BoxLayout({
       vertical: true,
-      clip_to_allocation: true,
       reactive: true,
       style: "padding: 5px;"
     });
-    this.box.add_child(tasksBox);
-    for (let i = 0; i < sortedTasks.length; i++) {
-      if (items === maxItems) {
-        break;
-      }
-      const task = sortedTasks[i];
-      let taskBox = this.getTaskBox({
-        task,
-        onClick: () => {
-          this.update();
-        }
-      });
-      taskBox.idx = i;
-      tasksBox.add_child(taskBox);
-      items += 1;
-    }
-    if (items === 0) {
+    const scrollView = new St7.ScrollView({
+      hscrollbar_policy: St7.PolicyType.NEVER,
+      vscrollbar_policy: St7.PolicyType.AUTOMATIC,
+      overlay_scrollbars: true,
+      reactive: true
+    });
+    scrollView.add_actor(tasksBox);
+    this.content.forEach((task, i) => {
+      Store_default.log(i, task);
+      tasksBox.add_child(this.getTaskBox({ task, onClick: this.onUpdate }));
+    });
+    if (this.content.length === 0) {
       const noTasksText = new St7.Label({
         text: "No tasks to do!",
         clip_to_allocation: true,
@@ -635,6 +632,7 @@ var TasksNote = class extends Note {
       });
       tasksBox.add_child(noTasksText);
     }
+    this.box.add_child(scrollView);
   }
   getTaskBox({ task, onClick }) {
     const taskBox = new St7.BoxLayout({
