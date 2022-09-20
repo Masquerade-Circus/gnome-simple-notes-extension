@@ -165,7 +165,7 @@ var DEFAULT_NOTES = [
   {
     title: "Note 3",
     type: "image",
-    content: "https://picsum.photos/200/300",
+    content: "https://picsum.photos/320/180",
     color: "success"
   }
 ];
@@ -196,6 +196,9 @@ var NoteModal = class {
     this.constructType();
   }
   constructType() {
+    if (this.widget) {
+      this.widget.contentLayout.destroy_all_children();
+    }
     switch (this.type) {
       case NOTE_TYPES.TEXT:
         this.setTextNote();
@@ -289,9 +292,6 @@ var NoteModal = class {
     this.widget.contentLayout.add_child(colorButtons);
   }
   setTextNote() {
-    if (this.widget) {
-      this.widget.contentLayout.destroy_all_children();
-    }
     this.setTitle();
     const textArea = new St.BoxLayout({
       vertical: true,
@@ -329,6 +329,19 @@ var NoteModal = class {
   setTasksNote() {
   }
   setImageNote() {
+    let style = `background-size: contain;background-image: url("${this.content}");border-radius: 5px;`;
+    const imageArea = new St.BoxLayout({
+      vertical: true,
+      clip_to_allocation: true,
+      reactive: true,
+      style,
+      x_align: Clutter.ActorAlign.FILL,
+      y_align: Clutter.ActorAlign.FILL,
+      x_expand: true,
+      y_expand: true
+    });
+    this.widget.contentLayout.add_child(imageArea);
+    this.widget.open();
   }
   save() {
     this.update();
@@ -360,6 +373,7 @@ var NoteModal = class {
     if (this.isNew) {
       this.delete();
     }
+    this.widget.destroy();
   }
   update() {
     this.constructType();
@@ -372,7 +386,7 @@ var createNewNote = ({ type, onUpdate }) => {
     title: "New note",
     type,
     content: "",
-    color: COLOR_TYPES.PRIMARY
+    color: COLOR_TYPES.DEFAULT
   });
   let noteModal = new NoteModal({
     id: id2,
@@ -484,6 +498,12 @@ var Note = class {
       reactive: true,
       style: `background-color: ${COLORS[note.color]};border-radius: 5px;margin-right: 5px;`
     });
+    this.box.connect("button-press-event", () => {
+      new NoteModal_default({
+        id: this.id,
+        onUpdate: () => this.update()
+      });
+    });
     this.id = id2;
     this.title = note.title;
     this.type = note.type;
@@ -523,13 +543,6 @@ var Note = class {
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 5px;"
-    });
-    this.box.connect("button-press-event", () => {
-      Store_default.logInfo("Double clicked");
-      new NoteModal_default({
-        id: this.id,
-        onUpdate: () => this.update()
-      });
     });
     this.box.add_child(contentText);
   }
@@ -631,28 +644,6 @@ var Note = class {
       x_expand: true,
       y_expand: true
     });
-    const imageButton = new St3.Button({
-      clip_to_allocation: true,
-      reactive: true,
-      can_focus: true,
-      style: "border-radius: 5px;",
-      x_expand: true,
-      y_expand: true
-    });
-    imageButton.connect("enter-event", () => {
-      imageButton.set_style(
-        `border-radius: 5px;background-color: rgba(0, 0, 0, 0.2);`
-      );
-    });
-    imageButton.connect("leave-event", () => {
-      imageButton.set_style(
-        `border-radius: 5px;background-color: transparent;`
-      );
-    });
-    imageButton.connect("clicked", () => {
-      Util.spawn(["xdg-open", this.content]);
-    });
-    imageBox.add_child(imageButton);
     this.box.add_child(imageBox);
   }
   update() {
