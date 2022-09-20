@@ -174,251 +174,8 @@ var DEFAULT_NOTES_CONFIG = {
   items: 5
 };
 
-// lib/logic/NoteModal.js
-var { St, Clutter, Pango } = imports.gi;
-var { modalDialog: ModalDialog } = imports.ui;
-var NoteModal = class {
-  constructor({ id: id2, onUpdate }) {
-    const notes = Store_default.getState("notes") || [];
-    const note = notes[id2];
-    if (!note) {
-      throw new Error("Note not found");
-    }
-    this.title = note.title;
-    this.type = note.type;
-    this.content = note.content;
-    this.color = note.color;
-    this.onUpdate = onUpdate;
-    this.id = id2;
-    this.isNew = false;
-    this.widget = null;
-    this.createWidget();
-    this.constructType();
-  }
-  constructType() {
-    if (!this.widget) {
-      throw new Error("Widget not created");
-    }
-    this.widget.contentLayout.destroy_all_children();
-    switch (this.type) {
-      case NOTE_TYPES.TEXT:
-        this.setTextNote();
-        break;
-      case NOTE_TYPES.TASKS:
-        this.setTasksNote();
-        break;
-      case NOTE_TYPES.IMAGE:
-        this.setImageNote();
-        break;
-    }
-    this.show();
-  }
-  createWidget() {
-    const widget = new ModalDialog.ModalDialog({});
-    global.display.connect("workareas-changed", () => widget.queue_relayout());
-    widget.setButtons([
-      {
-        label: "Save",
-        action: () => this.save(),
-        key: Clutter.KEY_S
-      },
-      {
-        label: "Delete",
-        action: () => this.delete()
-      },
-      {
-        label: "Close",
-        action: () => this.close(),
-        key: Clutter.KEY_Escape
-      }
-    ]);
-    widget.contentLayout.style_class = "note-content-layout";
-    widget.contentLayout.style = `background-color: ${COLORS[this.color]};border-radius: 5px;`;
-    widget.contentLayout.width = NOTE_MODAL.maxWidth;
-    widget.contentLayout.height = NOTE_MODAL.maxHeight;
-    this.widget = widget;
-  }
-  setTitle() {
-    const titleBox = new St.BoxLayout({
-      vertical: false,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "background-color: rgba(0, 0, 0, 0.2);border-radius: 5px 5px 0 0;",
-      x_align: Clutter.ActorAlign.FILL
-    });
-    const title = new St.Entry({
-      text: this.title,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "font-weight: bold; font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
-      x_expand: true
-    });
-    title.clutter_text.connect("text-changed", () => {
-      this.title = title.get_text();
-    });
-    titleBox.connect("button-press-event", () => {
-      title.grab_key_focus();
-    });
-    titleBox.add_child(title);
-    this.widget.contentLayout.add_child(titleBox);
-  }
-  setColorButtons() {
-    const colorButtons = new St.BoxLayout({
-      vertical: false,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "padding: 5px;",
-      x_align: Clutter.ActorAlign.END
-    });
-    Object.keys(COLORS).forEach((colorName) => {
-      const color = COLORS[colorName];
-      let style = `background-color: ${color};border-radius: 5px; box-shadow: 0 0 5px rgba(0, 0, 0, 0.5); margin: 0 5px;`;
-      if (colorName === this.color) {
-        style += "border: 2px solid #fff;";
-      }
-      const button = new St.Button({
-        style,
-        width: 30,
-        height: 30,
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER
-      });
-      button.connect("clicked", () => {
-        this.color = colorName;
-        this.widget.contentLayout.style = `background-color: ${color};border-radius: 5px;`;
-        this.update();
-      });
-      colorButtons.add_child(button);
-    });
-    this.widget.contentLayout.add_child(colorButtons);
-  }
-  setTextNote() {
-    this.setTitle();
-    const textArea = new St.BoxLayout({
-      vertical: true,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "padding: 5px;",
-      x_align: Clutter.ActorAlign.FILL,
-      y_align: Clutter.ActorAlign.FILL,
-      x_expand: true,
-      y_expand: true
-    });
-    const text = new St.Entry({
-      text: this.content,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
-      x_expand: true
-    });
-    let clutterText = text.clutter_text;
-    clutterText.set_single_line_mode(false);
-    clutterText.set_activatable(false);
-    clutterText.set_line_wrap(true);
-    clutterText.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
-    clutterText.connect("text-changed", () => {
-      this.content = text.get_text();
-    });
-    textArea.add_child(text);
-    textArea.connect("button-press-event", () => {
-      text.grab_key_focus();
-    });
-    this.widget.contentLayout.add_child(textArea);
-    this.setColorButtons();
-  }
-  setTasksNote() {
-  }
-  setImageNote() {
-    let style = `background-size: contain;background-image: url("${this.content}");border-radius: 5px;`;
-    const imageArea = new St.BoxLayout({
-      vertical: true,
-      clip_to_allocation: true,
-      reactive: true,
-      style,
-      x_align: Clutter.ActorAlign.FILL,
-      y_align: Clutter.ActorAlign.FILL,
-      x_expand: true,
-      y_expand: true
-    });
-    this.widget.contentLayout.add_child(imageArea);
-    const imageInput = new St.Entry({
-      clip_to_allocation: true,
-      reactive: true,
-      style: "font-size: 14px;color: #fff; padding: 5px;",
-      x_expand: true,
-      text: this.content
-    });
-    this.newContent = null;
-    imageInput.clutter_text.connect("text-changed", () => {
-      this.newContent = imageInput.get_text();
-    });
-    this.widget.contentLayout.add_child(imageInput);
-  }
-  hide() {
-    this.widget.close();
-  }
-  show() {
-    this.widget.open();
-  }
-  save() {
-    if (this.newContent) {
-      this.content = this.newContent;
-    }
-    let notes = Store_default.getState("notes");
-    notes[this.id] = {
-      title: this.title,
-      type: this.type,
-      content: this.content,
-      color: this.color
-    };
-    Store_default.setState("notes", notes);
-    this.isNew = false;
-    this.hide();
-    this.widget.destroy();
-    if (typeof this.onUpdate === "function") {
-      this.onUpdate();
-    }
-  }
-  delete() {
-    let notes = Store_default.getState("notes");
-    notes.splice(this.id, 1);
-    Store_default.setState("notes", notes);
-    this.hide();
-    this.widget.destroy();
-    if (typeof this.onUpdate === "function") {
-      this.onUpdate();
-    }
-  }
-  close() {
-    this.hide();
-    if (this.isNew) {
-      this.delete();
-    }
-    this.widget.destroy();
-  }
-  update() {
-    this.constructType();
-  }
-};
-var createNewNote = ({ type, onUpdate }) => {
-  let notes = Store_default.getState("notes");
-  let id2 = notes.length;
-  notes.push({
-    title: "New note",
-    type,
-    content: "",
-    color: COLOR_TYPES.DEFAULT
-  });
-  let noteModal = new NoteModal({
-    id: id2,
-    onUpdate
-  });
-  noteModal.isNew = true;
-};
-var NoteModal_default = NoteModal;
-
 // lib/core/BaseExtension.js
-var { St: St2, Clutter: Clutter2 } = imports.gi;
+var { St, Clutter } = imports.gi;
 var { main, panelMenu } = imports.ui;
 var ExtensionUtils2 = imports.misc.extensionUtils;
 var Me2 = ExtensionUtils2.getCurrentExtension();
@@ -448,10 +205,10 @@ var Extension = class {
         label: "..."
       }
     ];
-    let label = new St2.Label({
+    let label = new St.Label({
       text: "...",
       opacity: 150,
-      y_align: Clutter2.ActorAlign.CENTER
+      y_align: Clutter.ActorAlign.CENTER
     });
     panelButton.add_child(label);
     panelButton.label = label;
@@ -501,9 +258,248 @@ var Extension = class {
 };
 var BaseExtension_default = Extension;
 
-// lib/logic/Note.js
+// lib/logic/modals/NoteModal.js
+var { St: St2, Clutter: Clutter2 } = imports.gi;
+var { modalDialog: ModalDialog } = imports.ui;
+var NoteModal = class {
+  constructor({ id: id2, onUpdate, isNew }) {
+    const notes = Store_default.getState("notes") || [];
+    const note = notes[id2];
+    if (!note) {
+      throw new Error("Note not found");
+    }
+    this.title = note.title;
+    this.type = note.type;
+    this.content = note.content;
+    this.color = note.color;
+    this.onUpdate = onUpdate;
+    this.id = id2;
+    this.isNew = isNew || false;
+    this.widget = null;
+    this.createWidget();
+    this.update();
+  }
+  constructBody() {
+    throw new Error("Not implemented");
+  }
+  createWidget() {
+    const widget = new ModalDialog.ModalDialog({});
+    global.display.connect("workareas-changed", () => widget.queue_relayout());
+    widget.setButtons([
+      {
+        label: "Save",
+        action: () => this.save(),
+        key: Clutter2.KEY_S
+      },
+      {
+        label: "Delete",
+        action: () => this.delete()
+      },
+      {
+        label: "Close",
+        action: () => this.close(),
+        key: Clutter2.KEY_Escape
+      }
+    ]);
+    widget.contentLayout.style_class = "note-content-layout";
+    widget.contentLayout.style = `background-color: ${COLORS[this.color]};border-radius: 5px;`;
+    widget.contentLayout.width = NOTE_MODAL.maxWidth;
+    widget.contentLayout.height = NOTE_MODAL.maxHeight;
+    this.widget = widget;
+  }
+  setTitle() {
+    const titleBox = new St2.BoxLayout({
+      vertical: false,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "background-color: rgba(0, 0, 0, 0.2);border-radius: 5px 5px 0 0;",
+      x_align: Clutter2.ActorAlign.FILL
+    });
+    const title = new St2.Entry({
+      text: this.title,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-weight: bold; font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
+      x_expand: true
+    });
+    title.clutter_text.connect("text-changed", () => {
+      this.title = title.get_text();
+    });
+    titleBox.connect("button-press-event", () => {
+      title.grab_key_focus();
+    });
+    titleBox.add_child(title);
+    this.widget.contentLayout.add_child(titleBox);
+  }
+  setColorButtons() {
+    const colorButtons = new St2.BoxLayout({
+      vertical: false,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "padding: 5px;",
+      x_align: Clutter2.ActorAlign.END
+    });
+    Object.keys(COLORS).forEach((colorName) => {
+      const color = COLORS[colorName];
+      let style = `background-color: ${color};border-radius: 5px; box-shadow: 0 0 5px rgba(0, 0, 0, 0.5); margin: 0 5px;`;
+      if (colorName === this.color) {
+        style += "border: 2px solid #fff;";
+      }
+      const button = new St2.Button({
+        style,
+        width: 30,
+        height: 30,
+        x_align: Clutter2.ActorAlign.CENTER,
+        y_align: Clutter2.ActorAlign.CENTER
+      });
+      button.connect("clicked", () => {
+        this.color = colorName;
+        this.widget.contentLayout.style = `background-color: ${color};border-radius: 5px;`;
+        this.update();
+      });
+      colorButtons.add_child(button);
+    });
+    this.widget.contentLayout.add_child(colorButtons);
+  }
+  hide() {
+    this.widget.close();
+  }
+  show() {
+    this.widget.open();
+  }
+  save() {
+    if (this.newContent) {
+      this.content = this.newContent;
+    }
+    let notes = Store_default.getState("notes");
+    notes[this.id] = {
+      title: this.title,
+      type: this.type,
+      content: this.content,
+      color: this.color
+    };
+    Store_default.setState("notes", notes);
+    this.isNew = false;
+    this.hide();
+    this.widget.destroy();
+    if (typeof this.onUpdate === "function") {
+      this.onUpdate();
+    }
+  }
+  delete() {
+    let notes = Store_default.getState("notes");
+    notes.splice(this.id, 1);
+    Store_default.setState("notes", notes);
+    this.hide();
+    this.widget.destroy();
+    if (typeof this.onUpdate === "function") {
+      this.onUpdate();
+    }
+  }
+  close() {
+    this.hide();
+    if (this.isNew) {
+      this.delete();
+    }
+    this.widget.destroy();
+  }
+  update() {
+    if (!this.widget) {
+      throw new Error("Widget not created");
+    }
+    this.widget.contentLayout.destroy_all_children();
+    this.constructBody();
+    this.show();
+  }
+};
+
+// lib/logic/modals/ImageNoteModal.js
 var { St: St3, Clutter: Clutter3 } = imports.gi;
-var { util: Util } = imports.misc;
+var ImageNoteModal = class extends NoteModal {
+  constructor({ id: id2, onUpdate }) {
+    super({ id: id2, onUpdate });
+  }
+  constructBody() {
+    let style = `background-size: contain;background-image: url("${this.content}");border-radius: 5px;`;
+    const imageArea = new St3.BoxLayout({
+      vertical: true,
+      clip_to_allocation: true,
+      reactive: true,
+      style,
+      x_align: Clutter3.ActorAlign.FILL,
+      y_align: Clutter3.ActorAlign.FILL,
+      x_expand: true,
+      y_expand: true
+    });
+    this.widget.contentLayout.add_child(imageArea);
+    const imageInput = new St3.Entry({
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 5px;",
+      x_expand: true,
+      text: this.content
+    });
+    this.newContent = null;
+    imageInput.clutter_text.connect("text-changed", () => {
+      this.newContent = imageInput.get_text();
+    });
+    this.widget.contentLayout.add_child(imageInput);
+  }
+};
+
+// lib/logic/modals/TasksNoteModal.js
+var TasksNoteModal = class extends NoteModal {
+  constructor({ id: id2, onUpdate }) {
+    super({ id: id2, onUpdate });
+  }
+  constructBody() {
+  }
+};
+
+// lib/logic/modals/TextNoteModal.js
+var { St: St4, Clutter: Clutter4, Pango } = imports.gi;
+var TextNoteModal = class extends NoteModal {
+  constructor({ id: id2, onUpdate }) {
+    super({ id: id2, onUpdate });
+  }
+  constructBody() {
+    this.setTitle();
+    const textArea = new St4.BoxLayout({
+      vertical: true,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "padding: 5px;",
+      x_align: Clutter4.ActorAlign.FILL,
+      y_align: Clutter4.ActorAlign.FILL,
+      x_expand: true,
+      y_expand: true
+    });
+    const text = new St4.Entry({
+      text: this.content,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "font-size: 14px;color: #fff; padding: 5px; background-color: transparent; outline: none;border: none;",
+      x_expand: true
+    });
+    let clutterText = text.clutter_text;
+    clutterText.set_single_line_mode(false);
+    clutterText.set_activatable(false);
+    clutterText.set_line_wrap(true);
+    clutterText.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+    clutterText.connect("text-changed", () => {
+      this.content = text.get_text();
+    });
+    textArea.add_child(text);
+    textArea.connect("button-press-event", () => {
+      text.grab_key_focus();
+    });
+    this.widget.contentLayout.add_child(textArea);
+    this.setColorButtons();
+  }
+};
+
+// lib/logic/notes/Note.js
+var { St: St5 } = imports.gi;
 var Note = class {
   constructor({ id: id2, width, height, onUpdate }) {
     const notes = Store_default.getState("notes") || [];
@@ -511,7 +507,7 @@ var Note = class {
     if (!note) {
       throw new Error("Note not found");
     }
-    this.box = new St3.BoxLayout({
+    this.box = new St5.BoxLayout({
       vertical: true,
       width,
       height,
@@ -520,10 +516,26 @@ var Note = class {
       style: `background-color: ${COLORS[note.color]};border-radius: 5px;margin-right: 5px;`
     });
     this.box.connect("button-press-event", () => {
-      new NoteModal_default({
-        id: this.id,
-        onUpdate: () => this.update()
-      });
+      switch (note.type) {
+        case NOTE_TYPES.TEXT:
+          new TextNoteModal({
+            id: this.id,
+            onUpdate: () => this.update()
+          });
+          break;
+        case NOTE_TYPES.TASKS:
+          new TasksNoteModal({
+            id: this.id,
+            onUpdate: () => this.update()
+          });
+          break;
+        case NOTE_TYPES.IMAGE:
+          new ImageNoteModal({
+            id: this.id,
+            onUpdate: () => this.update()
+          });
+          break;
+      }
     });
     this.id = id2;
     this.title = note.title;
@@ -533,10 +545,10 @@ var Note = class {
     this.width = width;
     this.height = height;
     this.onUpdate = onUpdate;
-    this.constructType();
+    this.constructBody();
   }
   setTitle(prefix = "") {
-    const titleText = new St3.Label({
+    const titleText = new St5.Label({
       text: `${prefix} ${this.title}`.trim(),
       clip_to_allocation: true,
       reactive: true,
@@ -544,70 +556,44 @@ var Note = class {
     });
     this.box.add_child(titleText);
   }
-  constructType() {
-    switch (this.type) {
-      case NOTE_TYPES.TEXT:
-        this.setTextNote();
-        break;
-      case NOTE_TYPES.TASKS:
-        this.setTasksNote();
-        break;
-      case NOTE_TYPES.IMAGE:
-        this.setImageNote();
-        break;
+  constructBody() {
+    throw new Error("Method not implemented");
+  }
+  update() {
+    if (typeof this.onUpdate === "function" && this.onUpdate() === false) {
+      return;
     }
+    this.box.destroy_all_children();
+    this.constructBody();
   }
-  setTextNote() {
-    this.setTitle();
-    const contentText = new St3.Label({
-      text: this.content,
-      clip_to_allocation: true,
-      reactive: true,
-      style: "padding: 5px;"
-    });
-    this.box.add_child(contentText);
+};
+
+// lib/logic/notes/ImageNote.js
+var { St: St6 } = imports.gi;
+var ImageNote = class extends Note {
+  constructor({ id: id2, width, height, onUpdate }) {
+    super({ id: id2, width, height, onUpdate });
   }
-  getTaskBox({ title, onClick }) {
-    const taskBox = new St3.BoxLayout({
-      vertical: false,
+  constructBody() {
+    const imageBox = new St6.BoxLayout({
       clip_to_allocation: true,
-      reactive: true,
-      style: "padding: 2px;"
-    });
-    const taskTitle = new St3.Label({
-      text: title,
-      clip_to_allocation: true,
-      reactive: true,
-      x_align: Clutter3.ActorAlign.START,
-      x_expand: true
-    });
-    const taskSwitch = new St3.Button({
       reactive: true,
       can_focus: true,
-      x_align: Clutter3.ActorAlign.END,
-      y_align: Clutter3.ActorAlign.CENTER,
-      child: new St3.Label({
-        text: "Done",
-        style: "padding: 5px;font-size: 10px;"
-      }),
-      style: "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
+      style: `background-size: cover;background-image: url("${this.content}");border-radius: 5px;`,
+      x_expand: true,
+      y_expand: true
     });
-    taskSwitch.connect("clicked", onClick);
-    taskSwitch.connect("enter-event", () => {
-      taskSwitch.set_style(
-        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.4);"
-      );
-    });
-    taskSwitch.connect("leave-event", () => {
-      taskSwitch.set_style(
-        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
-      );
-    });
-    taskBox.add_child(taskTitle);
-    taskBox.add_child(taskSwitch);
-    return taskBox;
+    this.box.add_child(imageBox);
   }
-  setTasksNote() {
+};
+
+// lib/logic/notes/TasksNote.js
+var { St: St7, Clutter: Clutter5 } = imports.gi;
+var TasksNote = class extends Note {
+  constructor({ id: id2, width, height, onUpdate }) {
+    super({ id: id2, width, height, onUpdate });
+  }
+  constructBody() {
     let doneTasks = this.content.reduce((acc, task) => {
       if (task.isDone) {
         acc++;
@@ -615,7 +601,7 @@ var Note = class {
       return acc;
     }, 0);
     this.setTitle(`(${doneTasks}/${this.content.length})`);
-    const tasksBox = new St3.BoxLayout({
+    const tasksBox = new St7.BoxLayout({
       vertical: true,
       clip_to_allocation: true,
       reactive: true,
@@ -643,43 +629,104 @@ var Note = class {
       }
     }
     if (items === 0) {
-      const noTasksText = new St3.Label({
+      const noTasksText = new St7.Label({
         text: "No tasks to do!",
         clip_to_allocation: true,
         reactive: true,
         style: "padding: 5px;",
         opacity: 150,
-        x_align: Clutter3.ActorAlign.CENTER
+        x_align: Clutter5.ActorAlign.CENTER
       });
       tasksBox.add_child(noTasksText);
     }
     this.box.add_child(tasksBox);
   }
-  setImageNote() {
-    let style = `background-size: cover;background-image: url("${this.content}");border-radius: 5px;`;
-    const imageBox = new St3.BoxLayout({
+  getTaskBox({ title, onClick }) {
+    const taskBox = new St7.BoxLayout({
+      vertical: false,
       clip_to_allocation: true,
       reactive: true,
-      can_focus: true,
-      style,
-      x_expand: true,
-      y_expand: true
+      style: "padding: 2px;"
     });
-    this.box.add_child(imageBox);
-  }
-  update() {
-    if (typeof this.onUpdate === "function" && this.onUpdate() === false) {
-      return;
-    }
-    this.box.destroy_all_children();
-    this.constructType();
+    const taskTitle = new St7.Label({
+      text: title,
+      clip_to_allocation: true,
+      reactive: true,
+      x_align: Clutter5.ActorAlign.START,
+      x_expand: true
+    });
+    const taskSwitch = new St7.Button({
+      reactive: true,
+      can_focus: true,
+      x_align: Clutter5.ActorAlign.END,
+      y_align: Clutter5.ActorAlign.CENTER,
+      child: new St7.Label({
+        text: "Done",
+        style: "padding: 5px;font-size: 10px;"
+      }),
+      style: "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
+    });
+    taskSwitch.connect("clicked", onClick);
+    taskSwitch.connect("enter-event", () => {
+      taskSwitch.set_style(
+        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.4);"
+      );
+    });
+    taskSwitch.connect("leave-event", () => {
+      taskSwitch.set_style(
+        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
+      );
+    });
+    taskBox.add_child(taskTitle);
+    taskBox.add_child(taskSwitch);
+    return taskBox;
   }
 };
-var Note_default = Note;
+
+// lib/logic/notes/TextNote.js
+var { St: St8 } = imports.gi;
+var TextNote = class extends Note {
+  constructor({ id: id2, width, height, onUpdate }) {
+    super({ id: id2, width, height, onUpdate });
+  }
+  constructBody() {
+    this.setTitle();
+    const contentText = new St8.Label({
+      text: this.content,
+      clip_to_allocation: true,
+      reactive: true,
+      style: "padding: 5px;"
+    });
+    this.box.add_child(contentText);
+  }
+};
+
+// lib/logic/modals/createNewNote.js
+var createNewNote = ({ type, onUpdate }) => {
+  let notes = Store_default.getState("notes");
+  let id2 = notes.length;
+  notes.push({
+    title: "New note",
+    type,
+    content: "",
+    color: COLOR_TYPES.DEFAULT
+  });
+  switch (type) {
+    case NOTE_TYPES.TEXT:
+      new TextNoteModal({ id: id2, onUpdate, isNew: true });
+      break;
+    case NOTE_TYPES.TASKS:
+      new TasksNoteModal({ id: id2, onUpdate, isNew: true });
+      break;
+    case NOTE_TYPES.IMAGE:
+      new ImageNoteModal({ id: id2, onUpdate, isNew: true });
+      break;
+  }
+};
 
 // lib/logic/Extension.js
 var { main: Main, ctrlAltTab: CtrlAltTab } = imports.ui;
-var { St: St4, Clutter: Clutter4 } = imports.gi;
+var { St: St9, Clutter: Clutter6 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -751,13 +798,13 @@ var Extension2 = class extends BaseExtension_default {
     this.showNotesButton = showNotesButton;
   }
   initWidget() {
-    this.widget = new St4.Widget({
+    this.widget = new St9.Widget({
       width: global.screen_width,
       height: 100,
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter4.OffscreenRedirect.ALWAYS);
+    this.widget.set_offscreen_redirect(Clutter6.OffscreenRedirect.ALWAYS);
     Main.layoutManager.panelBox.add(this.widget);
     Main.ctrlAltTabManager.addGroup(
       this.widget,
@@ -771,7 +818,7 @@ var Extension2 = class extends BaseExtension_default {
     );
   }
   initNotesBox() {
-    this.notesBox = new St4.BoxLayout({
+    this.notesBox = new St9.BoxLayout({
       vertical: false,
       width: global.screen_width,
       clip_to_allocation: true,
@@ -804,7 +851,7 @@ var Extension2 = class extends BaseExtension_default {
       if (!note) {
         break;
       }
-      let instance = new Note_default({
+      let options = {
         id: i,
         width: notesWidth,
         height: notesHeight,
@@ -813,7 +860,22 @@ var Extension2 = class extends BaseExtension_default {
           this.showNotes();
           return false;
         }
-      });
+      };
+      let instance = null;
+      switch (note.type) {
+        case NOTE_TYPES.TEXT:
+          instance = new TextNote(options);
+          break;
+        case NOTE_TYPES.IMAGE:
+          instance = new ImageNote(options);
+          break;
+        case NOTE_TYPES.TASKS:
+          instance = new TasksNote(options);
+          break;
+      }
+      if (!instance) {
+        throw new Error(`Invalid note type: ${note.type}`);
+      }
       this.notesBox.add_child(instance.box);
     }
   }
