@@ -113,7 +113,7 @@ var NOTE_TYPES = {
 };
 var NOTE_MODAL = {
   maxWidth: 640,
-  maxHeight: Math.abs(640 / 16 * 9)
+  maxHeight: Math.trunc(640 / 16 * 9)
 };
 var COLOR_TYPES = {
   PRIMARY: "primary",
@@ -589,44 +589,40 @@ var ImageNote = class extends Note {
 
 // lib/logic/notes/TasksNote.js
 var { St: St7, Clutter: Clutter5 } = imports.gi;
+var { checkBox: CheckBox } = imports.ui;
 var TasksNote = class extends Note {
   constructor({ id: id2, width, height, onUpdate }) {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
-    let doneTasks = this.content.reduce((acc, task) => {
-      if (task.isDone) {
-        acc++;
-      }
-      return acc;
-    }, 0);
-    this.setTitle(`(${doneTasks}/${this.content.length})`);
+    let taskBoxHeight = this.height - 25;
+    let maxItems = Math.trunc(taskBoxHeight / 20);
+    let items = 0;
+    let undoneTasks = this.content.filter((task) => !task.isDone);
+    let doneTasks = this.content.filter((task) => task.isDone);
+    let sortedTasks = undoneTasks.concat(doneTasks);
+    this.setTitle(`(${doneTasks.length}/${this.content.length})`);
     const tasksBox = new St7.BoxLayout({
       vertical: true,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 5px;"
     });
-    let items = 0;
-    for (let i = 0; i < this.content.length; i++) {
-      if (items === 2) {
+    this.box.add_child(tasksBox);
+    for (let i = 0; i < sortedTasks.length; i++) {
+      if (items === maxItems) {
         break;
       }
-      if (!this.content[i].isDone) {
-        const { title, status, isDone } = this.content[i];
-        let taskBox = this.getTaskBox({
-          title,
-          status,
-          isDone,
-          onClick: () => {
-            this.content[taskBox.idx].isDone = !this.content[taskBox.idx].isDone;
-            this.update();
-          }
-        });
-        taskBox.idx = i;
-        tasksBox.add_child(taskBox);
-        items += 1;
-      }
+      const task = sortedTasks[i];
+      let taskBox = this.getTaskBox({
+        task,
+        onClick: () => {
+          this.update();
+        }
+      });
+      taskBox.idx = i;
+      tasksBox.add_child(taskBox);
+      items += 1;
     }
     if (items === 0) {
       const noTasksText = new St7.Label({
@@ -639,46 +635,26 @@ var TasksNote = class extends Note {
       });
       tasksBox.add_child(noTasksText);
     }
-    this.box.add_child(tasksBox);
   }
-  getTaskBox({ title, onClick }) {
+  getTaskBox({ task, onClick }) {
     const taskBox = new St7.BoxLayout({
       vertical: false,
       clip_to_allocation: true,
       reactive: true,
       style: "padding: 2px;"
     });
-    const taskTitle = new St7.Label({
-      text: title,
-      clip_to_allocation: true,
-      reactive: true,
-      x_align: Clutter5.ActorAlign.START,
-      x_expand: true
+    const taskCheckBox = new CheckBox.CheckBox(task.title);
+    taskCheckBox.checked = task.isDone;
+    taskCheckBox.connect("clicked", () => {
+      let idx = this.content.findIndex((t) => t === task);
+      if (idx !== -1) {
+        this.content[idx].isDone = !task.isDone;
+      }
+      if (typeof onClick === "function") {
+        onClick();
+      }
     });
-    const taskSwitch = new St7.Button({
-      reactive: true,
-      can_focus: true,
-      x_align: Clutter5.ActorAlign.END,
-      y_align: Clutter5.ActorAlign.CENTER,
-      child: new St7.Label({
-        text: "Done",
-        style: "padding: 5px;font-size: 10px;"
-      }),
-      style: "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
-    });
-    taskSwitch.connect("clicked", onClick);
-    taskSwitch.connect("enter-event", () => {
-      taskSwitch.set_style(
-        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.4);"
-      );
-    });
-    taskSwitch.connect("leave-event", () => {
-      taskSwitch.set_style(
-        "border-radius: 5px; background-color: rgba(0, 0, 0, 0.2);"
-      );
-    });
-    taskBox.add_child(taskTitle);
-    taskBox.add_child(taskSwitch);
+    taskBox.add_child(taskCheckBox);
     return taskBox;
   }
 };
@@ -845,7 +821,7 @@ var Extension2 = class extends BaseExtension_default {
       this.widget.set_height(notesHeight);
       this.widget.queue_relayout();
     }
-    let maxNotes = Math.abs(global.screen_width / notesWidth) - 1;
+    let maxNotes = Math.trunc(global.screen_width / notesWidth) - 1;
     for (let i = 0; i < maxNotes; i++) {
       let note = notes[i];
       if (!note) {
@@ -881,11 +857,11 @@ var Extension2 = class extends BaseExtension_default {
   }
   getWidthAndHeight() {
     let notesConfig = Store_default.getConfig("notes");
-    let notesWidth = Math.abs(global.screen_width / notesConfig.items);
+    let notesWidth = Math.trunc(global.screen_width / notesConfig.items);
     if (notesWidth > notesConfig.maxWidth) {
       notesWidth = notesConfig.maxWidth;
     }
-    let notesHeight = Math.abs(notesWidth / 16 * 9);
+    let notesHeight = Math.trunc(notesWidth / 16 * 9);
     return { notesWidth, notesHeight };
   }
   addNote(type) {
