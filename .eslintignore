@@ -1,2 +1,4 @@
 dist
 .tmp
+extension.js
+node_modules

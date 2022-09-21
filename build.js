@@ -1,12 +1,16 @@
 import esbuild from 'esbuild';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+const entrypoint = isProduction ? 'lib/index.js' : 'lib/index.dev.js';
+
 esbuild
   .build({
-    entryPoints: ['lib/index.js'],
+    entryPoints: [entrypoint],
     bundle: true,
     outfile: 'extension.js',
     minify: false,
-    sourcemap: true,
+    sourcemap: !isProduction,
     target: ['es2015'],
     format: 'cjs',
     platform: 'node',

@@ -16,121 +16,6 @@ var __spreadValues = (a, b) => {
   return a;
 };
 
-// lib/core/Store.js
-var { GLib, Gio } = imports.gi;
-var ExtensionUtils = imports.misc.extensionUtils;
-var Me = ExtensionUtils.getCurrentExtension();
-var LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3
-};
-var Store = class {
-  constructor() {
-    this.store = {
-      state: {},
-      config: {}
-    };
-    this.id = null;
-    this.logLevel = LOG_LEVELS.ERROR;
-  }
-  log(...args) {
-    let str = args.map((arg) => {
-      if (typeof arg === "object") {
-        return `
-${JSON.stringify(arg, null, 2)}`;
-      }
-      return arg;
-    }).join(", ");
-    log(`${Me.metadata.name}: ${str}`);
-  }
-  logDebug(...args) {
-    if (this.logLevel <= LOG_LEVELS.DEBUG) {
-      this.logDebug(...args);
-    }
-  }
-  logInfo(...args) {
-    if (this.logLevel <= LOG_LEVELS.INFO) {
-      this.logDebug(...args);
-    }
-  }
-  logWarn(...args) {
-    if (this.logLevel <= LOG_LEVELS.WARN) {
-      this.logDebug(...args);
-    }
-  }
-  logError(...args) {
-    if (this.logLevel <= LOG_LEVELS.ERROR) {
-      this.logDebug(...args);
-    }
-  }
-  enable(id2) {
-    this.id = id2;
-    this.schema = Gio.SettingsSchemaSource.new_from_directory(
-      Me.dir.get_child("schemas").get_path(),
-      Gio.SettingsSchemaSource.get_default(),
-      false
-    );
-    this.settings = new Gio.Settings({
-      settings_schema: this.schema.lookup(this.id, true)
-    });
-    this.loadSettings();
-  }
-  disable() {
-    this.saveSettings();
-  }
-  loadSettings() {
-    let settings = this.settings.get_value("store");
-    if (!settings || settings instanceof GLib.Variant === false) {
-      return null;
-    }
-    let unpacked = settings.deep_unpack();
-    this.logDebug("loadSettings", "store", unpacked);
-    this.store = JSON.parse(unpacked);
-  }
-  saveSettings() {
-    this.logDebug("saveSettings", this.store);
-    const settings = new GLib.Variant("s", JSON.stringify(this.store));
-    this.settings.set_value("store", settings);
-  }
-  setState(key, value) {
-    this.logDebug("setState", key, value);
-    this.store.state = this.store.state || {};
-    this.store.state[key] = value;
-    this.saveSettings();
-  }
-  getState(key) {
-    this.logDebug("getState", key, this.store.state && this.store.state[key]);
-    return this.store.state ? this.store.state[key] : null;
-  }
-  setConfig(key, value) {
-    this.logDebug("setConfig", key, value);
-    this.store.config = this.store.config || {};
-    this.store.config[key] = value;
-    this.saveSettings();
-  }
-  getConfig(key) {
-    this.logDebug(
-      "getConfig",
-      key,
-      this.store.config && this.store.config[key]
-    );
-    return this.store.config ? this.store.config[key] : null;
-  }
-  clearConfig() {
-    this.logDebug("clearConfig");
-    this.store.config = {};
-    this.saveSettings();
-  }
-  clearState() {
-    this.logDebug("clearState");
-    this.store.state = {};
-    this.saveSettings();
-  }
-};
-var Store_default = new Store();
-
 // lib/logic/constants.js
 var NOTE_TYPES = {
   TEXT: "text",
@@ -237,8 +122,123 @@ var SIZES = {
 var DEFAULT_NOTES_CONFIG = {
   width: SIZES.SMALL.width,
   height: SIZES.SMALL.height,
-  position: POSITION_TYPES.TOP
+  position: POSITION_TYPES.LEFT
 };
+
+// lib/core/Store.js
+var { GLib, Gio } = imports.gi;
+var ExtensionUtils = imports.misc.extensionUtils;
+var Me = ExtensionUtils.getCurrentExtension();
+var LOG_LEVELS = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3
+};
+var Store = class {
+  constructor() {
+    this.store = {
+      state: {},
+      config: {}
+    };
+    this.id = null;
+    this.logLevel = LOG_LEVELS.ERROR;
+  }
+  log(...args) {
+    let str = args.map((arg) => {
+      if (typeof arg === "object") {
+        return `
+${JSON.stringify(arg, null, 2)}`;
+      }
+      return arg;
+    }).join(", ");
+    log(`${Me.metadata.name}: ${str}`);
+  }
+  logDebug(...args) {
+    if (this.logLevel <= LOG_LEVELS.DEBUG) {
+      this.log(...args);
+    }
+  }
+  logInfo(...args) {
+    if (this.logLevel <= LOG_LEVELS.INFO) {
+      this.log(...args);
+    }
+  }
+  logWarn(...args) {
+    if (this.logLevel <= LOG_LEVELS.WARN) {
+      this.log(...args);
+    }
+  }
+  logError(...args) {
+    if (this.logLevel <= LOG_LEVELS.ERROR) {
+      this.log(...args);
+    }
+  }
+  enable(id2) {
+    this.id = id2;
+    this.schema = Gio.SettingsSchemaSource.new_from_directory(
+      Me.dir.get_child("schemas").get_path(),
+      Gio.SettingsSchemaSource.get_default(),
+      false
+    );
+    this.settings = new Gio.Settings({
+      settings_schema: this.schema.lookup(this.id, true)
+    });
+    this.loadSettings();
+  }
+  disable() {
+    this.saveSettings();
+  }
+  loadSettings() {
+    let settings = this.settings.get_value("store");
+    if (!settings || settings instanceof GLib.Variant === false) {
+      return null;
+    }
+    let unpacked = settings.deep_unpack();
+    this.logDebug("loadSettings", "store", unpacked);
+    this.store = JSON.parse(unpacked);
+  }
+  saveSettings() {
+    this.logDebug("saveSettings", this.store);
+    const settings = new GLib.Variant("s", JSON.stringify(this.store));
+    this.settings.set_value("store", settings);
+  }
+  setState(key, value) {
+    this.logDebug("setState", key, value);
+    this.store.state = this.store.state || {};
+    this.store.state[key] = value;
+    this.saveSettings();
+  }
+  getState(key) {
+    this.logDebug("getState", key, this.store.state && this.store.state[key]);
+    return this.store.state ? this.store.state[key] : null;
+  }
+  setConfig(key, value) {
+    this.logDebug("setConfig", key, value);
+    this.store.config = this.store.config || {};
+    this.store.config[key] = value;
+    this.saveSettings();
+  }
+  getConfig(key) {
+    this.logDebug(
+      "getConfig",
+      key,
+      this.store.config && this.store.config[key]
+    );
+    return this.store.config ? this.store.config[key] : null;
+  }
+  clearConfig() {
+    this.logDebug("clearConfig");
+    this.store.config = {};
+    this.saveSettings();
+  }
+  clearState() {
+    this.logDebug("clearState");
+    this.store.state = {};
+    this.saveSettings();
+  }
+};
+var Store_default = new Store();
 
 // lib/core/BaseExtension.js
 var { St, Clutter } = imports.gi;
@@ -1083,6 +1083,9 @@ var Extension2 = class extends BaseExtension_default {
     if (this.addNoteButton) {
       this.addNoteButton.destroy();
     }
+    if (this.configButton) {
+      this.configButton.destroy();
+    }
   }
   initConfigAndState() {
     let isHidden = Store_default.getConfig("isHidden");
@@ -1243,9 +1246,9 @@ var Extension2 = class extends BaseExtension_default {
     let { notesWidth, notesHeight } = this.getNotesWidthAndHeight();
     const vertical = position === POSITION_TYPES.LEFT || position === POSITION_TYPES.RIGHT;
     const widgetWidth = vertical ? notesWidth + 10 : global.screen_width;
-    const widgetHeight = vertical ? global.screen_height : notesHeight + 10;
+    const widgetHeight = vertical ? global.screen_height - 60 : notesHeight + 10;
     const x = position === POSITION_TYPES.RIGHT ? global.screen_width - widgetWidth : 0;
-    const y = position === POSITION_TYPES.BOTTOM ? global.screen_height - widgetHeight : 0;
+    const y = position === POSITION_TYPES.TOP ? 0 : 30;
     this.widget.width = widgetWidth;
     this.widget.height = widgetHeight;
     this.widget.vertical = vertical;
@@ -1343,58 +1346,12 @@ var Extension2 = class extends BaseExtension_default {
 };
 var Extension_default = Extension2;
 
-// lib/core/DevExtension.js
-var { main: main2, popupMenu } = imports.ui;
-var Dev = class extends Extension_default {
-  constructor(id2) {
-    super(id2);
-    this.unsafeMenuItem = null;
-  }
-  enable() {
-    global.context.unsafe_mode = true;
-    this.unsafeMenuItem = new popupMenu.PopupSwitchMenuItem(
-      "Unsafe Mode",
-      global.context.unsafe_mode
-    );
-    this.unsafeMenuItem.connect("toggled", () => {
-      global.context.unsafe_mode = this.unsafeMenuItem.state;
-    });
-    let insertAfter = main2.panel.statusArea.aggregateMenu._nightLight.menu;
-    let pos = main2.panel.statusArea.aggregateMenu.menu._getMenuItems().findIndex((menu) => menu === insertAfter);
-    main2.panel.statusArea.aggregateMenu.menu.addMenuItem(
-      this.unsafeMenuItem,
-      pos + 1
-    );
-    global.context.connect("notify::unsafe-mode", () => {
-      if (this.unsafeMenuItem != null) {
-        this.unsafeMenuItem.setToggleState(global.context.unsafe_mode);
-      }
-    });
-    super.enable();
-    Store_default.logLevel = LOG_LEVELS.INFO;
-  }
-  disable() {
-    global.context.unsafe_mode = false;
-    this.unsafeMenuItem.destroy();
-    this.unsafeMenuItem = null;
-    super.disable();
-  }
-};
-var DevExtension_default = Dev;
-
 // lib/index.js
-var isDev = true;
 var id = "org.gnome.shell.extensions.side-notes";
 function init() {
   try {
-    if (isDev) {
-      return new DevExtension_default(id);
-    }
     return new Extension_default(id);
   } catch (error) {
-    let stack = error.stack.split("\n").map((line) => line.replace(/^\.*masquerade-circus.net\//, ""));
-    error.stack = stack.join("\n");
     logError(error);
   }
 }
-//# sourceMappingURL=extension.js.map
