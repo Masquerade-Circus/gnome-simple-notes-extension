@@ -135,7 +135,8 @@ var Store_default = new Store();
 var NOTE_TYPES = {
   TEXT: "text",
   TASKS: "tasks",
-  IMAGE: "image"
+  IMAGE: "image",
+  WORKSPACE: "workspace"
 };
 var NOTE_MODAL = {
   maxWidth: 640,
@@ -327,7 +328,7 @@ var BaseExtension_default = Extension;
 var { St: St2, Clutter: Clutter2 } = imports.gi;
 var { modalDialog: ModalDialog } = imports.ui;
 var NoteModal = class {
-  constructor({ id: id2, onUpdate, isNew }) {
+  constructor({ id: id2, onUpdate, isNew, buttons }) {
     const notes = Store_default.getState("notes") || [];
     const note = notes[id2];
     if (!note) {
@@ -342,6 +343,13 @@ var NoteModal = class {
     this.isNew = isNew || false;
     this.oldContent = null;
     this.newContent = null;
+    this.width = NOTE_MODAL.maxWidth;
+    this.height = NOTE_MODAL.maxHeight;
+    this.buttons = __spreadValues({
+      save: true,
+      delete: true,
+      close: true
+    }, buttons || {});
     this.widget = null;
     this.createWidget();
     this.update();
@@ -351,28 +359,44 @@ var NoteModal = class {
   }
   createWidget() {
     const widget = new ModalDialog.ModalDialog({});
-    global.display.connect("workareas-changed", () => widget.queue_relayout());
-    widget.setButtons([
-      {
-        label: "Save",
-        action: () => this.save(),
-        key: Clutter2.KEY_S
-      },
-      {
-        label: "Delete",
-        action: () => this.delete()
-      },
-      {
-        label: "Close",
-        action: () => this.close(),
-        key: Clutter2.KEY_Escape
-      }
-    ]);
+    this.bindedQueueRelayout = this.queueRelayout.bind(this);
+    global.display.connect("workareas-changed", this.bindedQueueRelayout);
     widget.contentLayout.style_class = "note-content-layout";
     widget.contentLayout.style = `background-color: ${COLORS[this.color]};border-radius: 5px;`;
     widget.contentLayout.width = NOTE_MODAL.maxWidth;
     widget.contentLayout.height = NOTE_MODAL.maxHeight;
+    widget.connect("destroy", () => this.destroy());
     this.widget = widget;
+    this.setButtons();
+  }
+  queueRelayout() {
+    if (this.widget) {
+      this.widget.queue_relayout();
+    }
+  }
+  setButtons() {
+    const buttons = [];
+    if (this.buttons.save) {
+      buttons.push({
+        label: "Save",
+        action: () => this.save(),
+        key: Clutter2.KEY_S
+      });
+    }
+    if (this.buttons.delete) {
+      buttons.push({
+        label: "Delete",
+        action: () => this.delete()
+      });
+    }
+    if (this.buttons.close) {
+      buttons.push({
+        label: "Close",
+        action: () => this.close(),
+        key: Clutter2.KEY_Escape
+      });
+    }
+    this.widget.setButtons(buttons);
   }
   setTitle() {
     const titleBox = new St2.BoxLayout({
@@ -471,8 +495,8 @@ var NoteModal = class {
       if (this.oldContent) {
         this.content = this.oldContent;
       }
+      this.widget.destroy();
     }
-    this.widget.destroy();
   }
   update() {
     if (!this.widget) {
@@ -481,6 +505,10 @@ var NoteModal = class {
     this.widget.contentLayout.destroy_all_children();
     this.constructBody();
     this.show();
+  }
+  destroy() {
+    this.widget = null;
+    global.display.disconnect("workareas-changed", this.bindedQueueRelayout);
   }
 };
 
@@ -665,6 +693,36 @@ var TextNoteModal = class extends NoteModal {
   }
 };
 
+// lib/logic/modals/WorkspaceNoteModal.js
+var { WorkspaceThumbnail } = imports.ui.workspaceThumbnail;
+var workspaceManager = global.workspace_manager;
+var WorkspaceNoteModal = class extends NoteModal {
+  constructor({ id: id2, onUpdate }) {
+    super({ id: id2, onUpdate, buttons: { save: false } });
+  }
+  constructBody() {
+    const workspace = workspaceManager.get_workspace_by_index(this.content);
+    const workspaceThumbnail = new WorkspaceThumbnail(workspace, 0);
+    this.workspaceThumbnail = workspaceThumbnail;
+    workspaceThumbnail.set_size(this.width, this.height);
+    workspaceThumbnail.show();
+    const scale = this.width / global.screen_width;
+    workspaceThumbnail.setScale(scale, scale);
+    workspaceThumbnail.style = "border-radius: 5px;background: #000000;";
+    this.removeDraggableFromWindows();
+    this.widget.contentLayout.add(workspaceThumbnail);
+  }
+  removeDraggableFromWindows() {
+    if (this.workspaceThumbnail) {
+      this.workspaceThumbnail._windows.forEach((child) => {
+        if (child.realWindow && child._draggable) {
+          child.set_reactive(false);
+        }
+      });
+    }
+  }
+};
+
 // lib/logic/notes/Note.js
 var { St: St6 } = imports.gi;
 var Note = class {
@@ -702,6 +760,12 @@ var Note = class {
             onUpdate: () => this.update()
           });
           break;
+        case NOTE_TYPES.WORKSPACE:
+          new WorkspaceNoteModal({
+            id: this.id,
+            onUpdate: () => this.update()
+          });
+          break;
       }
     });
     this.id = id2;
@@ -712,16 +776,24 @@ var Note = class {
     this.width = width;
     this.height = height;
     this.onUpdate = onUpdate;
+    this.box.connect("destroy", () => this.destroy());
     this.constructBody();
   }
+  destroy() {
+    this.box = null;
+  }
   setTitle(prefix = "") {
-    const titleText = new St6.Label({
+    if (this.titleText) {
+      this.titleText.set_text(`${prefix} ${this.title}`.trim());
+      return;
+    }
+    this.titleText = new St6.Label({
       text: `${prefix} ${this.title}`.trim(),
       clip_to_allocation: true,
       reactive: true,
       style: "font-weight: bold;font-size: 14px;color: #fff; padding: 5px; background-color: rgba(0, 0, 0, 0.2);border-radius: 5px 5px 0 0;"
     });
-    this.box.add_child(titleText);
+    this.box.add_child(this.titleText);
   }
   constructBody() {
     throw new Error("Method not implemented");
@@ -730,10 +802,15 @@ var Note = class {
     if (typeof this.onUpdate === "function" && this.onUpdate() === false) {
       return;
     }
-    this.box.destroy_all_children();
-    this.constructBody();
+    this.rebuild();
   }
-  save({ reload = true }) {
+  rebuild() {
+    if (this.box) {
+      this.box.destroy_all_children();
+      this.constructBody();
+    }
+  }
+  save({ reload = true } = {}) {
     const notes = Store_default.getState("notes") || [];
     notes[this.id] = {
       title: this.title,
@@ -775,11 +852,7 @@ var TasksNote = class extends Note {
     super({ id: id2, width, height, onUpdate });
   }
   constructBody() {
-    let doneTasksCount = this.content.reduce(
-      (acc, task) => task.isDone ? acc += 1 : acc,
-      0
-    );
-    this.setTitle(`(${doneTasksCount}/${this.content.length})`);
+    this.updateTitle();
     const tasksBox = new St8.BoxLayout({
       vertical: true,
       reactive: true,
@@ -808,6 +881,13 @@ var TasksNote = class extends Note {
     }
     this.box.add_child(scrollView);
   }
+  updateTitle() {
+    let doneTasksCount = this.content.reduce(
+      (acc, task) => task.isDone ? acc += 1 : acc,
+      0
+    );
+    this.setTitle(`(${doneTasksCount}/${this.content.length})`);
+  }
   getTaskBox(task) {
     const taskBox = new St8.BoxLayout({
       vertical: false,
@@ -819,7 +899,8 @@ var TasksNote = class extends Note {
     taskCheckBox.checked = task.isDone;
     taskCheckBox.connect("clicked", () => {
       task.isDone = !task.isDone;
-      this.save();
+      this.save({ reload: false });
+      this.updateTitle();
     });
     taskBox.add_child(taskCheckBox);
     return taskBox;
@@ -869,32 +950,112 @@ var TextNote = class extends Note {
   }
 };
 
+// lib/logic/notes/WorkspaceNote.js
+var { Clutter: Clutter7 } = imports.gi;
+var { main: Main } = imports.ui;
+var { WorkspaceThumbnail: WorkspaceThumbnail2 } = imports.ui.workspaceThumbnail;
+var workspaceManager2 = global.workspace_manager;
+var WorkspaceNote = class extends Note {
+  constructor({ id: id2, width, height, onUpdate }) {
+    super({ id: id2, width, height, onUpdate });
+    this.addListeners();
+  }
+  addListeners() {
+    this.bindedRebuild = this.rebuild.bind(this);
+    this.bindedRemoveDraggableFromWindows = this.removeDraggableFromWindows.bind(this);
+    global.display.connect(
+      "window-entered-monitor",
+      this.bindedRemoveDraggableFromWindows
+    );
+    global.display.connect("workareas-changed", this.bindedRebuild);
+    Main.layoutManager.connect("monitors-changed", this.bindedRebuild);
+    global.display.connect("notify::focus-window", this.bindedRebuild);
+  }
+  constructBody() {
+    const workspace = workspaceManager2.get_workspace_by_index(this.content);
+    const workspaceThumbnail = new WorkspaceThumbnail2(workspace, 0);
+    this.workspaceThumbnail = workspaceThumbnail;
+    workspaceThumbnail.set_size(this.width, this.height);
+    workspaceThumbnail.show();
+    const scale = this.width / global.screen_width;
+    workspaceThumbnail.setScale(scale, scale);
+    workspaceThumbnail.style = "border-radius: 5px;background: #000000;";
+    this.removeDraggableFromWindows();
+    this.box.connect("scroll-event", (actor, event) => {
+      const direction = event.get_scroll_direction();
+      if (direction === Clutter7.ScrollDirection.UP) {
+        this.content++;
+        if (this.content >= workspaceManager2.n_workspaces) {
+          this.content = 0;
+        }
+        this.rebuild();
+      } else if (direction === Clutter7.ScrollDirection.DOWN) {
+        this.content--;
+        if (this.content < 0) {
+          this.content = workspaceManager2.n_workspaces - 1;
+        }
+        this.rebuild();
+      }
+      return Clutter7.EVENT_STOP;
+    });
+    this.box.add(workspaceThumbnail);
+  }
+  removeDraggableFromWindows() {
+    if (this.workspaceThumbnail) {
+      this.workspaceThumbnail._windows.forEach((child) => {
+        if (child.realWindow && child._draggable) {
+          child.set_reactive(false);
+        }
+      });
+    }
+  }
+  destroy() {
+    global.display.disconnect(
+      "window-entered-monitor",
+      this.bindedRemoveDraggableFromWindows
+    );
+    global.display.disconnect("workareas-changed", this.bindedRebuild);
+    Main.layoutManager.disconnect("monitors-changed", this.bindedRebuild);
+    global.display.disconnect("notify::focus-window", this.bindedRebuild);
+    super.destroy();
+  }
+};
+
 // lib/logic/modals/createNewNote.js
 var createNewNote = ({ type, onUpdate }) => {
   let notes = Store_default.getState("notes");
   let id2 = notes.length;
-  notes.push({
+  const note = {
     title: "New note",
     type,
     content: "",
     color: COLOR_TYPES.DEFAULT
-  });
+  };
+  notes.push(note);
   switch (type) {
     case NOTE_TYPES.TEXT:
       new TextNoteModal({ id: id2, onUpdate, isNew: true });
       break;
     case NOTE_TYPES.TASKS:
+      note.title = "New tasks";
+      note.content = [];
       new TasksNoteModal({ id: id2, onUpdate, isNew: true });
       break;
     case NOTE_TYPES.IMAGE:
       new ImageNoteModal({ id: id2, onUpdate, isNew: true });
       break;
+    case NOTE_TYPES.WORKSPACE:
+      note.title = "Workspace switcher";
+      note.content = 0;
+      Store_default.setState("notes", notes);
+      onUpdate();
+      break;
   }
 };
 
 // lib/logic/Extension.js
-var { main: Main, ctrlAltTab: CtrlAltTab, popupMenu: PopupMenu } = imports.ui;
-var { St: St10, Clutter: Clutter7 } = imports.gi;
+var { main: Main2, ctrlAltTab: CtrlAltTab, popupMenu: PopupMenu } = imports.ui;
+var { St: St10, Clutter: Clutter8 } = imports.gi;
 var Extension2 = class extends BaseExtension_default {
   constructor(id2) {
     super(id2);
@@ -959,6 +1120,10 @@ var Extension2 = class extends BaseExtension_default {
     addNoteButton.menu.addAction("Text", () => this.addNote(NOTE_TYPES.TEXT));
     addNoteButton.menu.addAction("Image", () => this.addNote(NOTE_TYPES.IMAGE));
     addNoteButton.menu.addAction("Tasks", () => this.addNote(NOTE_TYPES.TASKS));
+    addNoteButton.menu.addAction(
+      "Workspace",
+      () => this.addNote(NOTE_TYPES.WORKSPACE)
+    );
     this.addNoteButton = addNoteButton;
   }
   initShowNotesPanelButton() {
@@ -1023,17 +1188,17 @@ var Extension2 = class extends BaseExtension_default {
       clip_to_allocation: true,
       reactive: true
     });
-    this.widget.set_offscreen_redirect(Clutter7.OffscreenRedirect.ALWAYS);
-    Main.ctrlAltTabManager.addGroup(
+    this.widget.set_offscreen_redirect(Clutter8.OffscreenRedirect.ALWAYS);
+    Main2.ctrlAltTabManager.addGroup(
       this.widget,
       "Simple Notes",
       "focus-top-bar-symbolic",
       { sortGroup: CtrlAltTab.SortGroup.TOP }
     );
     global.display.connect("workareas-changed", () => this.setPositions());
-    Main.layoutManager.connect("monitors-changed", () => this.setPositions());
+    Main2.layoutManager.connect("monitors-changed", () => this.setPositions());
     this.widget.connect("destroy", () => {
-      Main.layoutManager.removeChrome(this.widget);
+      Main2.layoutManager.removeChrome(this.widget);
     });
   }
   initNotesBox() {
@@ -1057,14 +1222,14 @@ var Extension2 = class extends BaseExtension_default {
   movePositionTo(position) {
     let currentPosition = Store_default.getConfig("position");
     if (currentPosition === POSITION_TYPES.TOP) {
-      Main.layoutManager.panelBox.remove_child(this.widget);
+      Main2.layoutManager.panelBox.remove_child(this.widget);
     } else {
-      Main.layoutManager.removeChrome(this.widget);
+      Main2.layoutManager.removeChrome(this.widget);
     }
     if (position === POSITION_TYPES.TOP) {
-      Main.layoutManager.panelBox.add(this.widget);
+      Main2.layoutManager.panelBox.add(this.widget);
     } else {
-      Main.layoutManager.addChrome(this.widget, {
+      Main2.layoutManager.addChrome(this.widget, {
         affectsStruts: true,
         affectsInputRegion: true,
         trackFullscreen: true
@@ -1091,24 +1256,23 @@ var Extension2 = class extends BaseExtension_default {
     this.scrollView.height = widgetHeight;
     this.scrollView.hscrollbar_policy = vertical ? St10.PolicyType.NEVER : St10.PolicyType.AUTOMATIC;
     this.scrollView.vscrollbar_policy = vertical ? St10.PolicyType.AUTOMATIC : St10.PolicyType.NEVER;
-    Store_default.log(position, x, y, widgetWidth, widgetHeight, vertical);
     let shouldBeHidden = Store_default.getConfig("isHidden");
     if (shouldBeHidden) {
       if (this.widget.visible) {
         this.widget.hide();
         if (position === POSITION_TYPES.TOP) {
-          Main.layoutManager.panelBox.remove_child(this.widget);
+          Main2.layoutManager.panelBox.remove_child(this.widget);
         } else {
-          Main.layoutManager.removeChrome(this.widget);
+          Main2.layoutManager.removeChrome(this.widget);
         }
       }
       return;
     }
     if (!this.widget.visible) {
       if (position === POSITION_TYPES.TOP) {
-        Main.layoutManager.panelBox.add(this.widget);
+        Main2.layoutManager.panelBox.add(this.widget);
       } else {
-        Main.layoutManager.addChrome(this.widget, {
+        Main2.layoutManager.addChrome(this.widget, {
           affectsStruts: true,
           affectsInputRegion: true,
           trackFullscreen: true
@@ -1131,7 +1295,6 @@ var Extension2 = class extends BaseExtension_default {
         width: notesWidth,
         height: notesHeight,
         onUpdate: () => {
-          Store_default.logInfo("Note updated");
           this.showNotes();
           return false;
         }
@@ -1146,6 +1309,9 @@ var Extension2 = class extends BaseExtension_default {
           break;
         case NOTE_TYPES.TASKS:
           instance = new TasksNote(options);
+          break;
+        case NOTE_TYPES.WORKSPACE:
+          instance = new WorkspaceNote(options);
           break;
       }
       if (!instance) {
@@ -1169,7 +1335,6 @@ var Extension2 = class extends BaseExtension_default {
     createNewNote({
       type,
       onUpdate: () => {
-        Store_default.logInfo("Note updated");
         this.showNotes();
         return false;
       }
