@@ -1160,15 +1160,18 @@ var Extension2 = class extends BaseExtension_default {
     configButton.menu.addMenuItem(
       new PopupMenu.PopupSeparatorMenuItem("Position")
     );
-    configButton.menu.addAction("Top", () => {
-      this.movePositionTo(POSITION_TYPES.TOP);
-    });
-    configButton.menu.addAction("Left", () => {
-      this.movePositionTo(POSITION_TYPES.LEFT);
-    });
-    configButton.menu.addAction("Right", () => {
-      this.movePositionTo(POSITION_TYPES.RIGHT);
-    });
+    configButton.menu.addAction(
+      "Top",
+      () => this.setPosition(POSITION_TYPES.TOP)
+    );
+    configButton.menu.addAction(
+      "Left",
+      () => this.setPosition(POSITION_TYPES.LEFT)
+    );
+    configButton.menu.addAction(
+      "Right",
+      () => this.setPosition(POSITION_TYPES.RIGHT)
+    );
     configButton.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem("Size"));
     Object.values(SIZES).forEach(({ width, height, label }) => {
       let isActive = width === Store_default.getConfig("width");
@@ -1188,7 +1191,6 @@ var Extension2 = class extends BaseExtension_default {
     this.widget = new St10.Widget({
       width: global.screen_width,
       height: 100,
-      clip_to_allocation: true,
       reactive: true
     });
     this.widget.set_offscreen_redirect(Clutter8.OffscreenRedirect.ALWAYS);
@@ -1206,7 +1208,6 @@ var Extension2 = class extends BaseExtension_default {
   }
   initNotesBox() {
     this.notesBox = new St10.BoxLayout({
-      clip_to_allocation: true,
       vertical: false,
       reactive: true
     });
@@ -1214,41 +1215,50 @@ var Extension2 = class extends BaseExtension_default {
       hscrollbar_policy: St10.PolicyType.AUTOMATIC,
       vscrollbar_policy: St10.PolicyType.NEVER,
       overlay_scrollbars: true,
-      reactive: true,
-      style_class: "vfade"
+      reactive: true
     });
     scrollView.add_actor(this.notesBox);
     this.scrollView = scrollView;
-    this.widget.add_child(scrollView);
+    this.widget.add_child(this.scrollView);
     this.showNotes();
   }
-  movePositionTo(position) {
-    let currentPosition = Store_default.getConfig("position");
-    if (currentPosition === POSITION_TYPES.TOP) {
+  setPosition(position) {
+    let oldPosition = Store_default.getConfig("position");
+    if (oldPosition === POSITION_TYPES.TOP) {
       Main2.layoutManager.panelBox.remove_child(this.widget);
     } else {
       Main2.layoutManager.removeChrome(this.widget);
     }
     if (position === POSITION_TYPES.TOP) {
-      Main2.layoutManager.panelBox.add(this.widget);
+      Main2.layoutManager.panelBox.add_child(this.widget);
     } else {
       Main2.layoutManager.addChrome(this.widget, {
         affectsStruts: true,
-        affectsInputRegion: true,
-        trackFullscreen: true
+        trackFullscreen: true,
+        affectsInputRegion: true
       });
     }
     Store_default.setConfig("position", position);
-    this.showNotes();
+    this.setPositions();
   }
   setPositions() {
     let position = Store_default.getConfig("position");
+    let shouldBeHidden = Store_default.getConfig("isHidden");
+    if (position === POSITION_TYPES.TOP) {
+      Main2.layoutManager.panelBox.remove_child(this.widget);
+    } else {
+      Main2.layoutManager.removeChrome(this.widget);
+    }
+    if (shouldBeHidden) {
+      this.widget.hide();
+      return;
+    }
     let { notesWidth, notesHeight } = this.getNotesWidthAndHeight();
-    const vertical = position === POSITION_TYPES.LEFT || position === POSITION_TYPES.RIGHT;
-    const widgetWidth = vertical ? notesWidth + 10 : global.screen_width;
-    const widgetHeight = vertical ? global.screen_height - 60 : notesHeight + 10;
+    const vertical = position !== POSITION_TYPES.TOP;
+    const widgetWidth = vertical ? notesWidth + 20 : global.screen_width;
+    const widgetHeight = vertical ? global.screen_height - Main2.layoutManager.panelBox.height - 20 : notesHeight + 20;
     const x = position === POSITION_TYPES.RIGHT ? global.screen_width - widgetWidth : 0;
-    const y = position === POSITION_TYPES.TOP ? 0 : 30;
+    const y = Main2.layoutManager.panelBox.height;
     this.widget.width = widgetWidth;
     this.widget.height = widgetHeight;
     this.widget.vertical = vertical;
@@ -1259,31 +1269,16 @@ var Extension2 = class extends BaseExtension_default {
     this.scrollView.height = widgetHeight;
     this.scrollView.hscrollbar_policy = vertical ? St10.PolicyType.NEVER : St10.PolicyType.AUTOMATIC;
     this.scrollView.vscrollbar_policy = vertical ? St10.PolicyType.AUTOMATIC : St10.PolicyType.NEVER;
-    let shouldBeHidden = Store_default.getConfig("isHidden");
-    if (shouldBeHidden) {
-      if (this.widget.visible) {
-        this.widget.hide();
-        if (position === POSITION_TYPES.TOP) {
-          Main2.layoutManager.panelBox.remove_child(this.widget);
-        } else {
-          Main2.layoutManager.removeChrome(this.widget);
-        }
-      }
-      return;
+    if (position === POSITION_TYPES.TOP) {
+      Main2.layoutManager.panelBox.add_child(this.widget);
+    } else {
+      Main2.layoutManager.addChrome(this.widget, {
+        affectsStruts: true,
+        affectsInputRegion: true,
+        trackFullscreen: true
+      });
     }
-    if (!this.widget.visible) {
-      if (position === POSITION_TYPES.TOP) {
-        Main2.layoutManager.panelBox.add(this.widget);
-      } else {
-        Main2.layoutManager.addChrome(this.widget, {
-          affectsStruts: true,
-          affectsInputRegion: true,
-          trackFullscreen: true
-        });
-      }
-      this.widget.show();
-    }
-    this.widget.queue_relayout();
+    this.widget.show();
   }
   showNotes() {
     this.notesBox.destroy_all_children();
